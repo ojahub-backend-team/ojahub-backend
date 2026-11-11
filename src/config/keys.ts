@@ -15,8 +15,15 @@ const ENV_VARS: EnvSpec[] = [
     key: "MONGO_URI",
     required: true,
   },
+  { key: "ACCESS_TOKEN_SECRET", required: true },
+
+  { key: "REFRESH_TOKEN_SECRET", required: true },
   {
     key: "NODE_ENV",
+    required: true,
+  },
+  {
+    key: "GOOGLE_CLIENT_ID",
     required: true,
   },
   {
@@ -24,11 +31,27 @@ const ENV_VARS: EnvSpec[] = [
     required: true,
   },
   {
-    key: "SESSION_MAX_AGE,",
+    key: "SESSION_MAX_AGE",
     required: false,
   },
   {
     key: "SESSION_SECRET",
+    required: true,
+  },
+  {
+    key: "BREVO_SMTP_HOST",
+    required: true,
+  },
+  {
+    key: "BREVO_SMTP_USER",
+    required: true,
+  },
+  {
+    key: "BREVO_SMTP_KEY",
+    required: true,
+  },
+  {
+    key: "BREVO_SENDER_EMAIL",
     required: true,
   },
 ];
