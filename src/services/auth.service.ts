@@ -214,7 +214,7 @@ export const registerUserService = async (
 
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
-  const { otp, otpData } = await prepareOtp();
+  const { otp, otpData } = await prepareOtp(2);
   const newBusiness = await BusinessModel.create({
     name: `${name.trim()}'s Business`,
   });
@@ -301,7 +301,7 @@ export const resendOtpService = async (
     };
   }
 
-  let { otp, otpData } = await prepareOtp();
+  let { otp, otpData } = await prepareOtp(2);
 
   user.otp = {
     ...otpData,
@@ -327,62 +327,66 @@ export const forgotPasswordService = async (
     .findOne({ email: normalizedEmail })
     .select("+password");
 
-  if (!user || !user.emailVerified || !user.passwordResetOtp) {
-    if (
-      user.passwordResetOtp?.lastSentAt &&
-      Date.now() - user.passwordResetOtp.lastSentAt.getTime() < 60 * 1000
-    ) {
-      return {
-        success: true,
-        message:
-          "If an eligible account exists, a password reset code has been sent.",
-      };
-    }
-    if (
-      user.passwordResetOtp?.resendWindowStartedAt &&
-      Date.now() - user.passwordResetOtp.resendWindowStartedAt.getTime() <
-        60 * 60 * 1000 &&
-      user.passwordResetOtp.resendCount >= 5
-    ) {
-      return {
-        success: true,
-        message:
-          "If an eligible account exists, a password reset code has been sent.",
-      };
-    }
-    let { otp, otpData } = await prepareOtp();
+  let genericMessage =
+    "If an eligible account exists, a password reset code has been sent.";
 
-    let now = new Date();
-
-    let resendWindowStartedAt = user.passwordResetOtp?.resendWindowStartedAt;
-
-    let isWithinResendWindow = Boolean(
-      resendWindowStartedAt &&
-      now.getTime() - resendWindowStartedAt.getTime() < 60 * 60 * 1000,
-    );
-
-    user.passwordResetOtp = {
-      code: otpData.code,
-      expiresAt: otpData.expiresAt,
-      attempts: 0,
-      lastSentAt: now,
-      resendCount: isWithinResendWindow
-        ? (user.passwordResetOtp?.resendCount ?? 0) + 1
-        : 1,
-      resendWindowStartedAt: isWithinResendWindow
-        ? resendWindowStartedAt!
-        : now,
+  // Check whether the account exists and its email is verified.
+  if (!user || !user.emailVerified) {
+    return {
+      success: true,
+      message: genericMessage,
     };
-
-    await user.save();
-
-    await sendPasswordResetEmail(normalizedEmail, otp);
   }
+
+  let now = new Date();
+
+  // Enforce the 60-second cooldown.
+  let lastSentAt = user.passwordResetOtp?.lastSentAt;
+
+  if (lastSentAt && now.getTime() - lastSentAt.getTime() < 60 * 1000) {
+    return {
+      success: true,
+      message: genericMessage,
+    };
+  }
+
+  // Check whether the user is still within the one-hour resend window.
+  let resendWindowStartedAt = user.passwordResetOtp?.resendWindowStartedAt;
+
+  let isWithinResendWindow = Boolean(
+    resendWindowStartedAt &&
+    now.getTime() - resendWindowStartedAt.getTime() < 60 * 60 * 1000,
+  );
+
+  // Enforce a maximum of five requests per hour.
+  if (isWithinResendWindow && (user.passwordResetOtp?.resendCount ?? 0) >= 5) {
+    return {
+      success: true,
+      message: genericMessage,
+    };
+  }
+
+  // Generate a new password reset OTP.
+  let { otp, otpData } = await prepareOtp();
+
+  user.passwordResetOtp = {
+    code: otpData.code,
+    expiresAt: otpData.expiresAt,
+    attempts: 0,
+    lastSentAt: now,
+    resendCount: isWithinResendWindow
+      ? (user.passwordResetOtp?.resendCount ?? 0) + 1
+      : 1,
+    resendWindowStartedAt: isWithinResendWindow ? resendWindowStartedAt! : now,
+  };
+
+  await user.save();
+
+  await sendPasswordResetEmail(normalizedEmail, otp);
 
   return {
     success: true,
-    message:
-      "If an eligible account exists, a password reset code has been sent.",
+    message: genericMessage,
   };
 };
 export const resetPasswordService = async (
@@ -577,7 +581,9 @@ export const googleLoginService = async (
       idToken,
       audience: env.GOOGLE_CLIENT_ID,
     });
-  } catch {
+  } catch (error) {
+    console.error("Google token verification error:", error);
+
     return {
       success: false,
       status: 401,

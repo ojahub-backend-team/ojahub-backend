@@ -11,15 +11,15 @@ export const hashOtp = async (otp: string): Promise<string> => {
 
   return hashedOtp;
 };
-export const getOtpExpiry = (): Date => {
-  let expiresAt = new Date(Date.now() + 60 * 1000);
+export const getOtpExpiry = (minutes: number = 1): Date => {
+  let expiresAt = new Date(Date.now() + minutes * 60 * 1000);
 
   return expiresAt;
 };
-export const prepareOtp = async () => {
+export const prepareOtp = async (expiryMinutes: number = 1) => {
   let otp = generateOtp();
   let hashedOtp = await hashOtp(otp);
-  let expiresAt = getOtpExpiry();
+  let expiresAt = getOtpExpiry(expiryMinutes);
   let now = new Date();
 
   return {
