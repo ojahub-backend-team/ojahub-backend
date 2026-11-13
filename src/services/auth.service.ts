@@ -10,13 +10,6 @@ import {
 import { validatePassword } from "../utils/password.js";
 import { OAuth2Client } from "google-auth-library";
 import { env } from "../config/keys.js";
-import {
-  generateAccessToken,
-  generateRefreshToken,
-  hashRefreshToken,
-  verifyRefreshToken,
-} from "../utils/token.js";
-import RefreshTokenModel from "../models/refreshToken.model.js";
 
 const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
@@ -53,28 +46,9 @@ type LoginResult =
   | {
       success: true;
       user: userProfile;
-      accessToken: string;
-      refreshToken: string;
       message: string;
     }
   | ServiceError;
-
-type RefreshTokenFormData = {
-  refreshToken: string;
-};
-
-type RefreshTokenResult =
-  | {
-      success: true;
-      accessToken: string;
-      refreshToken: string;
-      message: string;
-    }
-  | ServiceError;
-
-type LogoutFormData = {
-  refreshToken: string;
-};
 
 type LogoutResult =
   | {
@@ -238,6 +212,7 @@ export const registerUserService = async (
     businessId: newBusiness._id,
     otp: otpData,
   });
+
   await sendVerificationEmail(normalizedEmail, otp);
   return {
     success: true,
@@ -545,22 +520,7 @@ export const loginUserService = async (
   user.lockUntil = undefined;
 
   await user.save();
-  let accessToken = generateAccessToken(user._id.toString());
 
-  let refreshToken = generateRefreshToken(user._id.toString(), rememberMe);
-  let tokenHash = hashRefreshToken(refreshToken);
-  let sessionDurationDays: 7 | 30 = rememberMe ? 30 : 7;
-
-  let expiresAt = new Date(
-    Date.now() + sessionDurationDays * 24 * 60 * 60 * 1000,
-  );
-
-  await RefreshTokenModel.create({
-    user: user._id,
-    tokenHash,
-    expiresAt,
-    sessionDurationDays,
-  });
   return {
     success: true,
     user: {
@@ -572,8 +532,6 @@ export const loginUserService = async (
       businessId: user.businessId.toString(),
       emailVerified: user.emailVerified,
     },
-    accessToken,
-    refreshToken,
     message: "Login successful",
   };
 };
@@ -643,24 +601,6 @@ export const googleLoginService = async (
     });
   }
 
-  let accessToken = generateAccessToken(user._id.toString());
-
-  let refreshToken = generateRefreshToken(user._id.toString(), false);
-
-  let tokenHash = hashRefreshToken(refreshToken);
-
-  let sessionDurationDays: 7 | 30 = 7;
-
-  let expiresAt = new Date(
-    Date.now() + sessionDurationDays * 24 * 60 * 60 * 1000,
-  );
-
-  await RefreshTokenModel.create({
-    user: user._id,
-    tokenHash,
-    expiresAt,
-    sessionDurationDays,
-  });
   return {
     success: true,
     user: {
@@ -672,121 +612,10 @@ export const googleLoginService = async (
       businessId: user.businessId.toString(),
       emailVerified: user.emailVerified,
     },
-    accessToken,
-    refreshToken,
     message: "Google login successful",
   };
 };
-export const refreshTokenService = async (
-  formData: RefreshTokenFormData,
-): Promise<RefreshTokenResult> => {
-  let { refreshToken } = formData;
 
-  let decoded = verifyRefreshToken(refreshToken);
-
-  if (!decoded) {
-    return {
-      success: false,
-      status: 401,
-      message: "Invalid or expired refresh token",
-    };
-  }
-  let tokenHash = hashRefreshToken(refreshToken);
-  let storedToken = await RefreshTokenModel.findOne({
-    user: decoded.userId,
-    tokenHash,
-  });
-  if (!storedToken) {
-    return {
-      success: false,
-      status: 401,
-      message: "Refresh token session is invalid or expired",
-    };
-  }
-
-  if (storedToken.expiresAt.getTime() <= Date.now()) {
-    await RefreshTokenModel.deleteOne({ _id: storedToken._id });
-
-    return {
-      success: false,
-      status: 401,
-      message: "Refresh token session is invalid or expired",
-    };
-  }
-  let user = await userModel.findById(decoded.userId);
-
-  if (!user || !user.emailVerified) {
-    await RefreshTokenModel.deleteOne({ _id: storedToken._id });
-
-    return {
-      success: false,
-      status: 401,
-      message: "User account is unavailable or not verified",
-    };
-  }
-  let accessToken = generateAccessToken(user._id.toString());
-
-  let newRefreshToken = generateRefreshToken(
-    user._id.toString(),
-    storedToken.sessionDurationDays === 30,
-  );
-  let newTokenHash = hashRefreshToken(newRefreshToken);
-  let sessionDurationDays = storedToken.sessionDurationDays;
-
-  let expiresAt = new Date(
-    Date.now() + sessionDurationDays * 24 * 60 * 60 * 1000,
-  );
-  let updatedToken = await RefreshTokenModel.findOneAndUpdate(
-    {
-      _id: storedToken._id,
-      tokenHash,
-    },
-    {
-      $set: {
-        tokenHash: newTokenHash,
-        expiresAt,
-      },
-    },
-    { new: true },
-  );
-  if (!updatedToken) {
-    return {
-      success: false,
-      status: 401,
-      message: "Refresh token has already been used or is invalid",
-    };
-  }
-  return {
-    success: true,
-    accessToken,
-    refreshToken: newRefreshToken,
-    message: "Tokens refreshed successfully",
-  };
-};
-export const logoutService = async (
-  formData: LogoutFormData,
-): Promise<LogoutResult> => {
-  let { refreshToken } = formData;
-
-  let decoded = verifyRefreshToken(refreshToken);
-
-  if (!decoded) {
-    return {
-      success: false,
-      status: 401,
-      message: "Invalid or expired refresh token",
-    };
-  }
-
-  let tokenHash = hashRefreshToken(refreshToken);
-
-  await RefreshTokenModel.deleteOne({ tokenHash });
-
-  return {
-    success: true,
-    message: "Logged out successfully",
-  };
-};
 export const logoutAllDevicesService = async (
   userId: string,
 ): Promise<LogoutResult> => {

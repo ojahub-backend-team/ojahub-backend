@@ -4,7 +4,6 @@ import {
   verifyEmailController,
   resendOtpController,
   loginController,
-  refreshTokenController,
   logoutController,
   logoutAllDevicesController,
   googleLoginController,
@@ -23,7 +22,6 @@ router.post("/register", authRateLimiter, registerUserController);
 router.post("/verify-email", otpRateLimiter, verifyEmailController);
 router.post("/resend-otp", otpRateLimiter, resendOtpController);
 router.post("/login", authRateLimiter, loginController);
-router.post("/refresh-token", authRateLimiter, refreshTokenController);
 router.post("/logout", logoutController);
 router.post("/logout-all", verifySession, logoutAllDevicesController);
 router.post("/google", authRateLimiter, googleLoginController);

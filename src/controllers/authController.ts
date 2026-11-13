@@ -3,8 +3,6 @@ import {
   verifyEmailService,
   resendOtpService,
   loginUserService,
-  refreshTokenService,
-  logoutService,
   logoutAllDevicesService,
   googleLoginService,
   forgotPasswordService,
@@ -115,27 +113,10 @@ export const loginController = tryCatchFn(async (req, res) => {
     message: result.message,
     body: {
       user: result.user,
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
     },
   });
 });
-export const refreshTokenController = tryCatchFn(async (req, res) => {
-  let result = await refreshTokenService(req.body);
 
-  if (!result.success) {
-    return sendErrorResponse(res, result.status, result.message);
-  }
-
-  sendSuccessResponse(res, 200, {
-    success: true,
-    message: result.message,
-    body: {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-    },
-  });
-});
 export const logoutController = tryCatchFn(async (req, res) => {
   await endSession(req, res);
 
@@ -183,8 +164,6 @@ export const googleLoginController = tryCatchFn(async (req, res) => {
     message: result.message,
     body: {
       user: result.user,
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
     },
   });
 });

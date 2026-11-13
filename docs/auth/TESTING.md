@@ -13,10 +13,13 @@ Tool: Postman, collection "OjaHub Auth", one cookie jar per user.
 | T-06 | POST /logout-all | Again, no session | 401 "Access denied. Please log in." | 401 "Acess denied. Please log in"| pass | 13 Nov 2026 |
 | T-07 | POST /logout | With session | 200, cookie cleared, session deleted | 200, as expected | pass | 13 Nov 2026 |
 | T-08 | POST /logout | No session | 200 (safe to repeat) | 200 | pass | 13 Nov 2026 |
-
+| T-9 | POST/login | Verified user logs in after the token code is removed | 200, _ojahub cookie set, response body contains only user (no accessToken or refreshToken) | 200 “Login successful”. The body contains only user (_id, name, email, phone, role, businessId, emailVerified). The _ojahub cookie is set. | pass | 13 Nov 202
+T-10 | POST /refresh-token | The refresh-token route has been removed	404 catch-all, because the route no longer exists |  404, {"success": false, "message": "Cannot find route - /api/auth/refresh-token on this server. please check the url and try again"} | pass | 13 Nov 2026
 
 ID	Route	Scenario	Expected	Actual	Result
 
 T-R1	POST /register	Email or phone already registered	409 “Email or phone number already exists”	409, same message	Pass
 
 T-R2	POST /register	New user, email can’t be sent (Brevo not configured)	201	500, but the user is saved in the database	Bug, fix in P0 step 7
+
+Resolved (P0.4): login no longer returns tokens. The session cookie `_ojahub` is the only credential. The `/refresh-token` route no longer exists, so the frontend must not call it.
