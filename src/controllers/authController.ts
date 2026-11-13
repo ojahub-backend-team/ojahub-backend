@@ -24,8 +24,6 @@ export const registerUserController = tryCatchFn(async (req, res) => {
     return sendErrorResponse(res, result.status, result.message);
   }
 
-  await startSession(req, result.user, req.body.rememberMe === true);
-
   return sendSuccessResponse(res, 201, {
     success: true,
     message: "User registered successfully",
@@ -110,8 +108,7 @@ export const loginController = tryCatchFn(async (req, res) => {
     return sendErrorResponse(res, result.status, result.message);
   }
 
-  req.session.userId = result.user._id;
-  req.session.role = result.user.role;
+  await startSession(req, result.user, req.body.rememberMe === true);
 
   sendSuccessResponse(res, 200, {
     success: true,
