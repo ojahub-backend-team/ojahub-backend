@@ -16,6 +16,7 @@ import {
   sendSuccessResponse,
 } from "../libs/response-handlers.js";
 import { startSession } from "../utils/startSession.js";
+import { endSession } from "../utils/sessionCleanup.js";
 
 export const registerUserController = tryCatchFn(async (req, res) => {
   const result = await registerUserService(req.body);
@@ -139,15 +140,11 @@ export const refreshTokenController = tryCatchFn(async (req, res) => {
   });
 });
 export const logoutController = tryCatchFn(async (req, res) => {
-  let result = await logoutService(req.body);
+  await endSession(req, res);
 
-  if (!result.success) {
-    return sendErrorResponse(res, result.status, result.message);
-  }
-
-  sendSuccessResponse<undefined>(res, 200, {
+  return sendSuccessResponse<undefined>(res, 200, {
     success: true,
-    message: result.message,
+    message: "Logged out successfully",
   });
 });
 
@@ -161,6 +158,8 @@ export const logoutAllDevicesController = tryCatchFn(async (req, res) => {
   if (!result.success) {
     return sendErrorResponse(res, result.status, result.message);
   }
+
+  await endSession(req, res);
 
   sendSuccessResponse<undefined>(res, 200, {
     success: true,
@@ -180,7 +179,7 @@ export const googleLoginController = tryCatchFn(async (req, res) => {
   if (!result.success) {
     return sendErrorResponse(res, result.status, result.message);
   }
-  
+
   await startSession(req, result.user);
   sendSuccessResponse(res, 200, {
     success: true,

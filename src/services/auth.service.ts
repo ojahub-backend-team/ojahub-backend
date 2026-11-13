@@ -1,3 +1,4 @@
+import { destroyAllUserSessions } from "./../utils/sessionCleanup.js";
 import bcrypt from "bcrypt";
 import userModel from "../models/user.model.js";
 import BusinessModel from "../models/business.model.js";
@@ -476,7 +477,7 @@ export const resetPasswordService = async (
 
   await user.save();
 
-  await RefreshTokenModel.deleteMany({ user: user._id });
+  await destroyAllUserSessions(user._id.toString());
 
   return {
     success: true,
@@ -789,7 +790,7 @@ export const logoutService = async (
 export const logoutAllDevicesService = async (
   userId: string,
 ): Promise<LogoutResult> => {
-  await RefreshTokenModel.deleteMany({ user: userId });
+  await destroyAllUserSessions(userId);
 
   return {
     success: true,
