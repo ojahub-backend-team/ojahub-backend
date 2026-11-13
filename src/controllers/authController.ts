@@ -3,7 +3,7 @@ import {
   verifyEmailService,
   resendOtpService,
   loginUserService,
-  refreshTokenService, 
+  refreshTokenService,
   logoutService,
   logoutAllDevicesService,
   googleLoginService,
@@ -15,6 +15,7 @@ import {
   sendErrorResponse,
   sendSuccessResponse,
 } from "../libs/response-handlers.js";
+import { startSession } from "../utils/startSession.js";
 
 export const registerUserController = tryCatchFn(async (req, res) => {
   const result = await registerUserService(req.body);
@@ -22,8 +23,7 @@ export const registerUserController = tryCatchFn(async (req, res) => {
     return sendErrorResponse(res, result.status, result.message);
   }
 
-  req.session.userId = result.user._id;
-  req.session.role = result.user.role;
+  await startSession(req, result.user, req.body.rememberMe === true);
 
   return sendSuccessResponse(res, 201, {
     success: true,
@@ -39,9 +39,11 @@ export const verifyEmailController = tryCatchFn(async (req, res) => {
   if (!result.success) {
     return sendErrorResponse(res, result.status, result.message);
   }
-  return sendSuccessResponse<undefined>(res, 200, {
+  await startSession(req, result.user);
+  return sendSuccessResponse(res, 200, {
     success: true,
     message: result.message,
+    body: { user: result.user },
   });
 });
 export const resendOtpController = tryCatchFn(async (req, res) => {
@@ -106,7 +108,7 @@ export const loginController = tryCatchFn(async (req, res) => {
   if (!result.success) {
     return sendErrorResponse(res, result.status, result.message);
   }
-  
+
   req.session.userId = result.user._id;
   req.session.role = result.user.role;
 
@@ -178,7 +180,8 @@ export const googleLoginController = tryCatchFn(async (req, res) => {
   if (!result.success) {
     return sendErrorResponse(res, result.status, result.message);
   }
-
+  
+  await startSession(req, result.user);
   sendSuccessResponse(res, 200, {
     success: true,
     message: result.message,

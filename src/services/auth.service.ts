@@ -42,7 +42,9 @@ type RegisterUserResult =
   | { success: true; user: userProfile; message: string }
   | ServiceError;
 
-type VerifyEmailResult = { success: true; message: string } | ServiceError;
+type VerifyEmailResult =
+  | { success: true; message: string; user: userProfile }
+  | ServiceError;
 
 type ResendOtpResult = { success: true; message: string } | ServiceError;
 
@@ -181,6 +183,15 @@ export const verifyEmailService = async (
   return {
     success: true,
     message: "Email verified successfully",
+    user: {
+      _id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      businessId: user.businessId.toString() ?? "",
+      emailVerified: true,
+    },
   };
 };
 
