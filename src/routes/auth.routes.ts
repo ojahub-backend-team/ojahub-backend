@@ -11,7 +11,7 @@ import {
   forgotPasswordController,
   resetPasswordController,
 } from "../controllers/authController.js";
-import { authenticate } from "../middlewares/auth.middleware.js";
+import { verifySession } from "../middlewares/auth.middleware.js";
 import {
   authRateLimiter,
   otpRateLimiter,
@@ -25,7 +25,7 @@ router.post("/resend-otp", otpRateLimiter, resendOtpController);
 router.post("/login", authRateLimiter, loginController);
 router.post("/refresh-token", authRateLimiter, refreshTokenController);
 router.post("/logout", logoutController);
-router.post("/logout-all", authenticate, logoutAllDevicesController);
+router.post("/logout-all", verifySession, logoutAllDevicesController);
 router.post("/google", authRateLimiter, googleLoginController);
 router.post(
   "/forgot-password",
