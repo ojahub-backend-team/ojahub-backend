@@ -28,6 +28,6 @@ ID	Route	Scenario	Expected	Actual	Result	Date
 
 T-V1	POST /verify-email	Wrong code	400 “Incorrect verification code”, no cookie	400 “Incorrect verification code”	Pass	13 Nov 2026
 
-T-V2	POST /verify-email	Correct code	200, user with emailVerified: true, _ojahub cookie set, session in Atlas	200 “Email verified successfully”, user body correct. Cookie and session: fill in after checking	Confirm	13 Nov 2026
+| T-V2 | POST /verify-email | Correct code | 200, user with emailVerified: true, _ojahub cookie set, session in Atlas | 200 “Email verified successfully”. _ojahub cookie set, expires in 24 hours. Session document in Atlas with session.userId matching the user. | Pass | 13 Nov 2026 |
 
 T-V3	POST /verify-email	Same code again	400 “Email is already verified”	400 “Email is already verified”	Pass	13 Nov 2026
