@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
-
+export const UserRole = ["user", "admin"] as const;
 export interface IUser extends Document {
   _id: mongoose.Types.ObjectId;
   name: string;
@@ -7,7 +7,7 @@ export interface IUser extends Document {
   googleId?: string;
   phone?: string;
   password?: string;
-  role: "user" | "admin";
+  role: typeof UserRole[number];
   businessId: mongoose.Types.ObjectId;
   emailVerified: boolean;
   failedLoginAttempts: number;

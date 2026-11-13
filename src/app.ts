@@ -1,7 +1,9 @@
-import path from "node:path";
 import cors from "cors";
 import express, { type NextFunction, Response, Request } from "express";
 import { env } from "./config/keys.js";
+import compression from "compression";
+import helmet from "helmet";
+import type {} from "./types/express.js";
 import { createSessionMiddleware } from "./config/session.js";
 import {
   appErrorHandler,
@@ -9,6 +11,7 @@ import {
   notFoundRoutes,
   globalErrorHandlers,
 } from "./middlewares/error.middleware.js";
+import { compressionOptions, helmetOptions } from "./libs/option.js";
 import authRoutes from "./routes/auth.routes.js";
 
 declare global {
@@ -23,7 +26,7 @@ declare global {
 const app = express();
 
 //trust proxy
-app.set("trust proxy", 1);
+app.set("trust proxy", true);
 
 //set up global error handler - (node process level)
 globalErrorHandlers();
@@ -79,14 +82,19 @@ app.use("/health", (req: Request, res: Response) => {
 
 app.use(createExpressLogger());
 app.use(cors(corsOptions));
+app.use(helmet(helmetOptions));
 app.use(createSessionMiddleware());
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+app.use(compression(compressionOptions));
 app.disable("x-powered-by");
+
+//api routes
 app.use("/api/auth", authRoutes);
 
 //handle 404 and global error
 app.use(notFoundRoutes);
 app.use(appErrorHandler);
+
 
 export default app;

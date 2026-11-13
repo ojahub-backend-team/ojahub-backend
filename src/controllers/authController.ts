@@ -3,7 +3,7 @@ import {
   verifyEmailService,
   resendOtpService,
   loginUserService,
-  refreshTokenService,
+  refreshTokenService, 
   logoutService,
   logoutAllDevicesService,
   googleLoginService,
@@ -21,6 +21,10 @@ export const registerUserController = tryCatchFn(async (req, res) => {
   if (!result.success) {
     return sendErrorResponse(res, result.status, result.message);
   }
+
+  req.session.userId = result.user._id;
+  req.session.role = result.user.role;
+
   return sendSuccessResponse(res, 201, {
     success: true,
     message: "User registered successfully",
@@ -29,6 +33,7 @@ export const registerUserController = tryCatchFn(async (req, res) => {
     },
   });
 });
+
 export const verifyEmailController = tryCatchFn(async (req, res) => {
   const result = await verifyEmailService(req.body);
   if (!result.success) {
@@ -101,6 +106,9 @@ export const loginController = tryCatchFn(async (req, res) => {
   if (!result.success) {
     return sendErrorResponse(res, result.status, result.message);
   }
+  
+  req.session.userId = result.user._id;
+  req.session.role = result.user.role;
 
   sendSuccessResponse(res, 200, {
     success: true,
@@ -140,6 +148,7 @@ export const logoutController = tryCatchFn(async (req, res) => {
     message: result.message,
   });
 });
+
 export const logoutAllDevicesController = tryCatchFn(async (req, res) => {
   if (!req.user) {
     return sendErrorResponse(res, 401, "Authentication required");
@@ -156,6 +165,7 @@ export const logoutAllDevicesController = tryCatchFn(async (req, res) => {
     message: result.message,
   });
 });
+
 export const googleLoginController = tryCatchFn(async (req, res) => {
   let { idToken } = req.body;
 

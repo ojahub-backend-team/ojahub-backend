@@ -1,7 +1,10 @@
+import { UserRole } from "../models/user.model.js";
+
 declare module "express-session" {
   interface SessionData {
     userId: string;
-    role: string;
+    role: typeof UserRole[number];
+    businessId: string;
   }
 }
 
