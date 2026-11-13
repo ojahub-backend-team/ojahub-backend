@@ -33,9 +33,9 @@ T-V1	POST /verify-email	Wrong code	400 “Incorrect verification code”, no coo
 T-V3	POST /verify-email	Same code again	400 “Email is already verified”	400 “Email is already verified”	Pass	13 Nov 2026
 
 ID	Route	Scenario	Expected	Actual	Result
-T-O1	POST /register	New user	No business created, businessId empty, onboardingStep 0	confirm	Confirm
+T-O1	POST /register	New user	No business created, businessId empty, onboardingStep 0	pass
 T-O2	POST /login	Verified user with no business	200, no crash, no session.businessId	200, businessId empty	Pass
-T-O3	GET (protected, uses requireBusiness)	No business yet	403, details.code “ONBOARDING_REQUIRED”	confirm	Confirm
+T-O3	GET (protected, uses requireBusiness)	No business yet	403, details.code “ONBOARDING_REQUIRED”	pass
 T-O4	PUT /api/onboarding/business	First save	200, business created with owner, user updated, session updated	200 “Business details saved”, onboardingStep 1	Pass
 T-O5	GET (protected, uses requireBusiness)	After step 1	200	200	Pass
 T-O6	PUT /api/onboarding/business	Save again	200, same business updated, no duplicate	Pass	Pass

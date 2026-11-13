@@ -26,7 +26,7 @@ type userProfile = {
   email: string;
   phone?: string;
   role: "user" | "admin";
-  businessId: string;
+  businessId?: string;
   emailVerified: boolean;
 };
 
@@ -164,7 +164,7 @@ export const verifyEmailService = async (
       email: user.email,
       phone: user.phone,
       role: user.role,
-      businessId: user.businessId?.toString() ?? "",
+      businessId: user.businessId?.toString(),
       emailVerified: true,
     },
   };
