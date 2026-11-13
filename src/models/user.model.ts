@@ -7,8 +7,9 @@ export interface IUser extends Document {
   googleId?: string;
   phone?: string;
   password?: string;
-  role: typeof UserRole[number];
-  businessId: mongoose.Types.ObjectId;
+  role: (typeof UserRole)[number];
+  businessId?: mongoose.Types.ObjectId;
+  onboardingStep: number; // 0 = not started, 1 - 4 = last completed step
   emailVerified: boolean;
   failedLoginAttempts: number;
   lockUntil?: Date;
@@ -74,7 +75,13 @@ const UserSchema: Schema<IUser> = new Schema(
     businessId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Business",
-      required: true,
+    },
+
+    onboardingStep: {
+      type: Number,
+      min: 0,
+      max: 4,
+      default: 0,
     },
 
     emailVerified: {

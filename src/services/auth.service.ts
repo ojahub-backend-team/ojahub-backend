@@ -164,7 +164,7 @@ export const verifyEmailService = async (
       email: user.email,
       phone: user.phone,
       role: user.role,
-      businessId: user.businessId.toString() ?? "",
+      businessId: user.businessId?.toString() ?? "",
       emailVerified: true,
     },
   };
@@ -201,15 +201,12 @@ export const registerUserService = async (
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
   const { otp, otpData } = await prepareOtp();
-  const newBusiness = await BusinessModel.create({
-    name: `${name.trim()}'s Business`,
-  });
+
   const newUser = await userModel.create({
     email: normalizedEmail,
     name: name.trim(),
     phone: normalizedPhone,
     password: hashedPassword,
-    businessId: newBusiness._id,
     otp: otpData,
   });
 
@@ -222,7 +219,7 @@ export const registerUserService = async (
       email: newUser.email,
       phone: newUser.phone,
       role: newUser.role,
-      businessId: newUser.businessId.toString(),
+      businessId: newUser.businessId?.toString(),
       emailVerified: newUser.emailVerified,
     },
     message: "Registration successful. Please verify your email.",
@@ -529,7 +526,7 @@ export const loginUserService = async (
       email: user.email,
       phone: user.phone,
       role: user.role,
-      businessId: user.businessId.toString(),
+      businessId: user.businessId?.toString(),
       emailVerified: user.emailVerified,
     },
     message: "Login successful",
@@ -587,16 +584,11 @@ export const googleLoginService = async (
     await user.save();
   }
   if (!user) {
-    let business = await BusinessModel.create({
-      name: `${payload.name || "My"}'s Business`,
-    });
-
     user = await userModel.create({
       name: payload.name || "Google User",
       email: payload.email.toLowerCase(),
       googleId: payload.sub,
       role: "user",
-      businessId: business._id,
       emailVerified: true,
     });
   }
@@ -609,7 +601,7 @@ export const googleLoginService = async (
       email: user.email,
       phone: user.phone,
       role: user.role,
-      businessId: user.businessId.toString(),
+      businessId: user.businessId?.toString(),
       emailVerified: user.emailVerified,
     },
     message: "Google login successful",

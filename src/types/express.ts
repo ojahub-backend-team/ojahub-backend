@@ -4,7 +4,7 @@ declare module "express-session" {
   interface SessionData {
     userId: string;
     role: typeof UserRole[number];
-    businessId: string;
+    businessId?: string;
   }
 }
 

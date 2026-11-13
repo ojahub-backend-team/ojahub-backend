@@ -13,6 +13,7 @@ import {
 } from "./middlewares/error.middleware.js";
 import { compressionOptions, helmetOptions } from "./libs/option.js";
 import authRoutes from "./routes/auth.routes.js";
+import onboardingRoutes from "./routes/onboarding.routes.js";
 
 declare global {
   namespace Express {
@@ -91,6 +92,7 @@ app.disable("x-powered-by");
 
 //api routes
 app.use("/api/auth", authRoutes);
+app.use("/api/onboarding", onboardingRoutes);
 
 //handle 404 and global error
 app.use(notFoundRoutes);

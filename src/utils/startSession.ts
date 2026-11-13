@@ -33,3 +33,13 @@ export const startSession = async (
     req.session.save((err) => (err ? reject(err) : resolve()));
   });
 };
+
+export const updateSessionBusiness = async (
+  req: Request,
+  businessId: string,
+): Promise<void> => {
+  req.session.businessId = businessId;
+  await new Promise<void>((resolve, reject) => {
+    req.session.save((err) => (err ? reject(err) : resolve()));
+  });
+};
