@@ -26,7 +26,7 @@ declare global {
 const app = express();
 
 //trust proxy
-app.set("trust proxy", true);
+app.set("trust proxy", 1);
 
 //set up global error handler - (node process level)
 globalErrorHandlers();
@@ -95,6 +95,5 @@ app.use("/api/auth", authRoutes);
 //handle 404 and global error
 app.use(notFoundRoutes);
 app.use(appErrorHandler);
-
 
 export default app;

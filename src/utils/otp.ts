@@ -12,7 +12,7 @@ export const hashOtp = async (otp: string): Promise<string> => {
   return hashedOtp;
 };
 export const getOtpExpiry = (): Date => {
-  let expiresAt = new Date(Date.now() + 60 * 1000);
+  let expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
   return expiresAt;
 };

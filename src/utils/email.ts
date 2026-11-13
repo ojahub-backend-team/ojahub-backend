@@ -24,7 +24,7 @@ export const sendVerificationEmail = async (
         <p>Thank you for creating an account.</p>
         <p>Use the verification code below to verify your email address:</p>
         <h1>${otp}</h1>
-        <p>This code expires in 60 seconds.</p>
+        <p>This code expires in 10 minutes.</p>
         <p>If you did not create this account, please ignore this email.</p>
       </div>
     `,
