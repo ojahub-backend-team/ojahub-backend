@@ -20,6 +20,14 @@ ID	Route	Scenario	Expected	Actual	Result
 
 T-R1	POST /register	Email or phone already registered	409 “Email or phone number already exists”	409, same message	Pass
 
-T-R2	POST /register	New user, email can’t be sent (Brevo not configured)	201	500, but the user is saved in the database	Bug, fix in P0 step 7
+| T-R2 | POST /register | New user, verification email cannot be sent | 201, user created | 500 connect ETIMEDOUT <smtp host>:587 after about 24 s. The user and business are still saved. | Bug, fix in P0 step 7 | 13 Nov 2026 |
 
 Resolved (P0.4): login no longer returns tokens. The session cookie `_ojahub` is the only credential. The `/refresh-token` route no longer exists, so the frontend must not call it.
+
+ID	Route	Scenario	Expected	Actual	Result	Date
+
+T-V1	POST /verify-email	Wrong code	400 “Incorrect verification code”, no cookie	400 “Incorrect verification code”	Pass	13 Nov 2026
+
+T-V2	POST /verify-email	Correct code	200, user with emailVerified: true, _ojahub cookie set, session in Atlas	200 “Email verified successfully”, user body correct. Cookie and session: fill in after checking	Confirm	13 Nov 2026
+
+T-V3	POST /verify-email	Same code again	400 “Email is already verified”	400 “Email is already verified”	Pass	13 Nov 2026
