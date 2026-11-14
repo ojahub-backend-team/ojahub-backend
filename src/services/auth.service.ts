@@ -1,7 +1,6 @@
 import { destroyAllUserSessions } from "./../utils/sessionCleanup.js";
 import bcrypt from "bcrypt";
 import userModel from "../models/user.model.js";
-import BusinessModel from "../models/business.model.js";
 import { prepareOtp } from "../utils/otp.js";
 import {
   sendVerificationEmail,
@@ -10,6 +9,7 @@ import {
 import { validatePassword } from "../utils/password.js";
 import { OAuth2Client } from "google-auth-library";
 import { env } from "../config/keys.js";
+import logger from "../config/logger.js";
 
 const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
@@ -202,15 +202,39 @@ export const registerUserService = async (
   const hashedPassword = await bcrypt.hash(password, salt);
   const { otp, otpData } = await prepareOtp();
 
-  const newUser = await userModel.create({
-    email: normalizedEmail,
-    name: name.trim(),
-    phone: normalizedPhone,
-    password: hashedPassword,
-    otp: otpData,
-  });
+  let newUser;
+  try {
+    newUser = await userModel.create({
+      email: normalizedEmail,
+      name: name.trim(),
+      phone: normalizedPhone,
+      password: hashedPassword,
+      otp: otpData,
+    });
+  } catch (error) {
+    // Two requests at the same moment: the unique index catches the second one
+    if ((error as { code?: number }).code === 11000) {
+      return {
+        success: false,
+        status: 409,
+        message: "Email or phone number already exists",
+      };
+    }
+    throw error;
+  }
 
-  await sendVerificationEmail(normalizedEmail, otp);
+  try {
+    await sendVerificationEmail(normalizedEmail, otp);
+  } catch (error) {
+    // No orphan accounts: if the code can't be sent, the registration is undone
+    await userModel.deleteOne({ _id: newUser._id });
+    logger.error({ err: error }, "Verification email failed; user removed");
+    return {
+      success: false,
+      status: 503,
+      message: "We couldn't send the verification email. Please try again.",
+    };
+  }
   return {
     success: true,
     user: {
@@ -302,73 +326,61 @@ export const resendOtpService = async (
     message: "A new verification code has been sent to your email",
   };
 };
+
+const RESET_MESSAGE =
+  "If an eligible account exists, a password reset code has been sent.";
+
 export const forgotPasswordService = async (
   formData: ForgotPasswordFormData,
 ): Promise<ForgotPasswordResult> => {
-  let normalizedEmail = formData.email.trim().toLowerCase();
+  const normalizedEmail = formData.email.trim().toLowerCase();
+  const reply = { success: true as const, message: RESET_MESSAGE };
 
-  let user = await userModel
-    .findOne({ email: normalizedEmail })
-    .select("+password");
+  const user = await userModel.findOne({ email: normalizedEmail });
 
-  if (!user || !user.emailVerified || !user.passwordResetOtp) {
-    if (
-      user.passwordResetOtp?.lastSentAt &&
-      Date.now() - user.passwordResetOtp.lastSentAt.getTime() < 60 * 1000
-    ) {
-      return {
-        success: true,
-        message:
-          "If an eligible account exists, a password reset code has been sent.",
-      };
-    }
-    if (
-      user.passwordResetOtp?.resendWindowStartedAt &&
-      Date.now() - user.passwordResetOtp.resendWindowStartedAt.getTime() <
-        60 * 60 * 1000 &&
-      user.passwordResetOtp.resendCount >= 5
-    ) {
-      return {
-        success: true,
-        message:
-          "If an eligible account exists, a password reset code has been sent.",
-      };
-    }
-    let { otp, otpData } = await prepareOtp();
+  // Unknown or unverified account: same reply, nothing sent
+  if (!user || !user.emailVerified) return reply;
 
-    let now = new Date();
+  const now = new Date();
+  const current = user.passwordResetOtp;
 
-    let resendWindowStartedAt = user.passwordResetOtp?.resendWindowStartedAt;
-
-    let isWithinResendWindow = Boolean(
-      resendWindowStartedAt &&
-      now.getTime() - resendWindowStartedAt.getTime() < 60 * 60 * 1000,
-    );
-
-    user.passwordResetOtp = {
-      code: otpData.code,
-      expiresAt: otpData.expiresAt,
-      attempts: 0,
-      lastSentAt: now,
-      resendCount: isWithinResendWindow
-        ? (user.passwordResetOtp?.resendCount ?? 0) + 1
-        : 1,
-      resendWindowStartedAt: isWithinResendWindow
-        ? resendWindowStartedAt!
-        : now,
-    };
-
-    await user.save();
-
-    await sendPasswordResetEmail(normalizedEmail, otp);
+  // 60-second cooldown between codes
+  if (
+    current?.lastSentAt &&
+    now.getTime() - current.lastSentAt.getTime() < 60 * 1000
+  ) {
+    return reply;
   }
 
-  return {
-    success: true,
-    message:
-      "If an eligible account exists, a password reset code has been sent.",
+  // At most 5 codes per hour
+  const windowStartedAt = current?.resendWindowStartedAt;
+  const inWindow = Boolean(
+    windowStartedAt &&
+    now.getTime() - windowStartedAt.getTime() < 60 * 60 * 1000,
+  );
+  if (inWindow && (current?.resendCount ?? 0) >= 5) return reply;
+
+  const { otp, otpData } = await prepareOtp();
+
+  user.passwordResetOtp = {
+    code: otpData.code,
+    expiresAt: otpData.expiresAt,
+    attempts: 0,
+    lastSentAt: now,
+    resendCount: inWindow ? (current?.resendCount ?? 0) + 1 : 1,
+    resendWindowStartedAt: inWindow ? windowStartedAt! : now,
   };
+  await user.save();
+
+  // Not awaited, so the reply is identical and just as fast for every email.
+  // If sending fails we only log it: an error here would reveal that the account exists.
+  sendPasswordResetEmail(normalizedEmail, otp).catch((error) =>
+    logger.error({ err: error }, "Password reset email failed"),
+  );
+
+  return reply;
 };
+
 export const resetPasswordService = async (
   formData: ResetPasswordFormData,
 ): Promise<ResetPasswordResult> => {
@@ -386,7 +398,9 @@ export const resetPasswordService = async (
     };
   }
 
-  let user = await userModel.findOne({ email: normalizedEmail });
+  let user = await userModel
+    .findOne({ email: normalizedEmail })
+    .select("+password");
 
   if (!user || !user.passwordResetOtp) {
     return {
@@ -399,6 +413,7 @@ export const resetPasswordService = async (
   if (user.passwordResetOtp.expiresAt.getTime() <= Date.now()) {
     user.passwordResetOtp = undefined;
     await user.save();
+
 
     return {
       success: false,
@@ -446,6 +461,8 @@ export const resetPasswordService = async (
   let salt = await bcrypt.genSalt(10);
   user.password = await bcrypt.hash(newPassword, salt);
   user.passwordResetOtp = undefined;
+  user.failedLoginAttempts = 0;
+  user.lockUntil = undefined;
 
   await user.save();
 
@@ -576,6 +593,15 @@ export const googleLoginService = async (
         status: 409,
         message: "This email is already linked to another Google account",
       };
+    }
+
+    // Google has just proved who owns this email: drop any credentials an
+    // unverified registrant set on it
+    if (!user.emailVerified) {
+      user.set("password", undefined);
+      user.otp = undefined;
+      user.failedLoginAttempts = 0;
+      user.lockUntil = undefined;
     }
 
     user.googleId = payload.sub;

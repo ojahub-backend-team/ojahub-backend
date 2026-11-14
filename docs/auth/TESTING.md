@@ -41,3 +41,13 @@ T-O5	GET (protected, uses requireBusiness)	After step 1	200	200	Pass
 T-O6	PUT /api/onboarding/business	Save again	200, same business updated, no duplicate	Pass	Pass
 T-O7	PUT /api/onboarding/business	Existing user with an old business	200, business updated and owner added	Pass	Pass
 T-O8	PUT /api/onboarding/business	Missing a required field	400	Pass	Pass
+
+ID	Route	Scenario	Expected	Result
+T-P1	POST /forgot-password	Email that doesn’t exist	200, generic message, no crash	Pass
+T-P2	POST /forgot-password	Account that never verified its email	200 generic, no reset code created	Pass
+T-P3	POST /forgot-password	Verified account	200, reset code stored	Pass
+T-P4	POST /forgot-password	Second request within 60 seconds	200 generic, no new code	Pass
+T-P5	POST /reset-password	New password same as current	400 “must be different from your current password”	Pass
+T-P6	POST /reset-password	Valid code, new password	200, all sessions deleted, old password refused, new one works	Pass
+T-P7	POST /register	Verification email cannot be sent	503, no user left behind	Pass
+T-P8	POST /google	Unverified password account linked via Google	Password and OTP removed, account verified	Code change only, test through the frontend
