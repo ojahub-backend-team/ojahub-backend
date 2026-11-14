@@ -414,7 +414,6 @@ export const resetPasswordService = async (
     user.passwordResetOtp = undefined;
     await user.save();
 
-
     return {
       success: false,
       status: 400,
@@ -561,7 +560,9 @@ export const googleLoginService = async (
       idToken,
       audience: env.GOOGLE_CLIENT_ID,
     });
-  } catch {
+  } catch (error) {
+    logger.error({ err: error }, "Google token verification failed");
+
     return {
       success: false,
       status: 401,
