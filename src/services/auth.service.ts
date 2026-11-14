@@ -645,3 +645,19 @@ export const logoutAllDevicesService = async (
     message: "Successfully logged out from all devices",
   };
 };
+
+export const getCurrentUserService = async (userId: string) => {
+  const user = await userModel.findById(userId);
+  if (!user) return null;
+
+  return {
+    _id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    businessId: user.businessId?.toString(),
+    emailVerified: user.emailVerified,
+    onboardingStep: user.onboardingStep,
+  };
+};

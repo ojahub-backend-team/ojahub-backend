@@ -7,6 +7,7 @@ import {
   googleLoginService,
   forgotPasswordService,
   resetPasswordService,
+  getCurrentUserService,
 } from "../services/auth.service.js";
 import tryCatchFn from "../libs/tryCatchFn.js";
 import {
@@ -165,5 +166,25 @@ export const googleLoginController = tryCatchFn(async (req, res) => {
     body: {
       user: result.user,
     },
+  });
+});
+
+export const meController = tryCatchFn(async (req, res) => {
+  const user = await getCurrentUserService(req.user!._id);
+
+  if (!user) {
+    //The account no longer exists: the session is useless, so remove it
+    await endSession(req, res);
+    return sendErrorResponse(
+      res,
+      401,
+      "Session is no longer valid. Please log in.",
+    );
+  }
+
+  return sendSuccessResponse(res, 200, {
+    success: true,
+    message: "Session is valid",
+    body: { user },
   });
 });

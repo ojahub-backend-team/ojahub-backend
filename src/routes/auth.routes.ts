@@ -9,6 +9,7 @@ import {
   googleLoginController,
   forgotPasswordController,
   resetPasswordController,
+  meController,
 } from "../controllers/authController.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import {
@@ -67,4 +68,5 @@ router.post(
   validate(resetPasswordSchema),
   resetPasswordController,
 );
+router.get("/me", verifySession, meController);
 export default router;
