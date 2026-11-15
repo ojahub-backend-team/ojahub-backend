@@ -11,13 +11,13 @@ const startServer = async (): Promise<void> => {
     await connectToDB();
     server = app.listen(PORT, "0.0.0.0", () => {
       logger.info(`Server is running in ${env.NODE_ENV} mode on port ${PORT}`);
-      logger.info(`https://localhost:${PORT}`);
+      logger.info(`http://localhost:${PORT}`);
     });
     process.on("unhandledRejection", (reason, unknown) => {
       console.error("UNHANDLED REJECTION! Shutting down!");
       const error =
         reason instanceof Error
-          ? `${reason.name} : {reason.message}`
+          ? `${reason.name} : ${reason.message}`
           : String(reason);
       logger.error({ reason: error }, "unhandled rejection");
       server.close(() => {
@@ -36,7 +36,7 @@ const startServer = async (): Promise<void> => {
           logger.error(`Port ${PORT} requires elevated priviledges`);
           process.exit(1);
         case "EADDRINUSE":
-          logger.error(`[port ${PORT} is already in use]`);
+          logger.error(`Port ${PORT} is already in use`);
           process.exit(1);
         default:
           throw error;

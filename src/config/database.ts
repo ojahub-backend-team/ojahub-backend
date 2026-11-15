@@ -18,6 +18,7 @@ export const connectToDB = async (): Promise<void> => {
   //check if we are already connected to database
   if (dbConnection.isConnected && mongoose.connection.readyState === 1) {
     logger.info("Using existing MongoDb Connection");
+    return;
   }
   //check for max retries of database call
   if (dbConnection.retryCount >= dbConnection.maxRetries) {
