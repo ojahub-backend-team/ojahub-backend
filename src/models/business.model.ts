@@ -15,12 +15,6 @@ export interface IBusiness extends Document {
 
   businessLocation?: string;
 
-  storageType?: "Stall or Shop" | "Warehouse";
-
-  storageLocationName?: string;
-
-  storageAddress?: string;
-
   createdAt: Date;
   updatedAt: Date;
 }
@@ -54,21 +48,6 @@ const BusinessSchema: Schema<IBusiness> = new Schema(
     },
 
     businessLocation: {
-      type: String,
-      trim: true,
-    },
-
-    storageType: {
-      type: String,
-      enum: ["Stall or Shop", "Warehouse"],
-    },
-
-    storageLocationName: {
-      type: String,
-      trim: true,
-    },
-
-    storageAddress: {
       type: String,
       trim: true,
     },
