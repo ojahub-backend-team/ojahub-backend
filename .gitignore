@@ -1,16 +1,6 @@
-# Dependencies
 node_modules/
-
-# Environment variables
 .env
 .env.*
 !.env.example
-
-# Compiled files
 dist/
-
-# Logs
-*.log
-
-# Debug files
 npm-debug.log*

@@ -82,17 +82,22 @@ export const appErrorHandler = (
     error = new ErrorResponse(message, 404);
   }
   //mongoose duplicate keys
-  if ((err as any).code === 1100) {
+  if ((err as any).code === 11000) {
     const message = "Duplicate field value entered";
     error = new ErrorResponse(message, 400);
   }
 
   //mongoose validation error
   if (err.name === "ValidationError") {
-    const message = Object.values(
-      (err as any).errors.map((val: any) => val.message),
+    const message = Object.values((err as any).errors).map(
+      (val: any) => val.message,
     );
     error = new ErrorResponse(message.join(","), 400);
+  }
+
+  //malformed JSON in the request body
+  if ((err as any).type === "entity.parse.failed") {
+    error = new ErrorResponse("Invalid JSON in request body", 400);
   }
 
   //send error along with its status and message using sendErrorRespopnse
