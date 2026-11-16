@@ -1,4 +1,5 @@
 import cors from "cors";
+import mongoose from "mongoose";
 import express, { type NextFunction, Response, Request } from "express";
 import { env } from "./config/keys.js";
 import compression from "compression";
@@ -56,6 +57,13 @@ const corsOptions: cors.CorsOptions = {
 app.use((req: Request, res: Response, next: NextFunction) => {
   req.requestTime = new Date().toISOString();
   next();
+});
+
+app.get("/health", (_req, res) => {
+  const dbUp = mongoose.connection.readyState === 1;
+  res
+    .status(dbUp ? 200 : 503)
+    .json({ status: dbUp ? "ok" : "database unavailable" });
 });
 
 //health check - no logs, session, or rate limiter required
