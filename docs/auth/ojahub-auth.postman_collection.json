@@ -1,0 +1,206 @@
+{
+  "info": {
+    "_postman_id": "aeefbab8-56b3-4112-8cbb-7264fbecfa84",
+    "name": "Ojahub",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "56626181",
+    "_collection_link": "https://go.postman.co/collection/56626181-aeefbab8-56b3-4112-8cbb-7264fbecfa84?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "T-register-duplicate",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Ife\",\r\n  \"email\": \"Idowuifeoluwa04@gmail.com\",\r\n  \"phone\": \"+2349018478858\",\r\n  \"password\": \"Passw0rd!!\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:3800/api/auth/register",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3800",
+              "path": ["api", "auth", "register"]
+            },
+            "description": "## Register User\n\nRegisters a new user account on the platform.\n\n**Endpoint:** `POST /api/auth/register`\n\n### Request Body\n\n| Field      | Type   | Required | Description                        |\n|------------|--------|----------|------------------------------------|\n| `name`     | string | Yes      | Full name of the user              |\n| `email`    | string | Yes      | User's email address               |\n| `phone`    | string | Yes      | User's phone number (E.164 format) |\n| `password` | string | Yes      | Account password                   |\n\n### Example Request Body\n\n```json\n{\n  \"name\": \"Ife\",\n  \"email\": \"Idowuifeoluwa04@gmail.com\",\n  \"phone\": \"+2349018478858\",\n  \"password\": \"Passw0rd!!\"\n}\n```\n\n### Responses\n\n#### 201 Created\n\nUser was registered successfully.\n\n```json\n{\n  \"success\": true,\n  \"message\": \"User registered successfully\",\n  \"body\": {\n    \"user\": {\n      \"_id\": \"6af5bfb6eda44bda039df0aa\",\n      \"name\": \"Ife\",\n      \"email\": \"idowuifeoluwa04@gmail.com\",\n      \"phone\": \"+2349018478858\",\n      \"role\": \"user\",\n      \"businessId\": \"6af5bfb6eda44bda039df0a9\",\n      \"emailVerified\": false\n    }\n  }\n}\n```\n\n### Notes\n\n- The `emailVerified` field in the response will be `false` until the user verifies their email address.\n- A `businessId` is automatically created and associated with the new user upon registration."
+          },
+          "response": []
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "login rememberMe: true",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "login rememberMe: false",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "logout-all",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "logout-all again",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "refresh-token",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "New Request",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "onboarding step 1",
+      "item": [
+        {
+          "name": "register",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "New Request",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": ""
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "New Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": ""
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "New Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": ""
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "New Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": ""
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": ""
+    }
+  ]
+}
