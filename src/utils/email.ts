@@ -24,7 +24,7 @@ export const sendVerificationEmail = async (
         <p>Thank you for creating an account.</p>
         <p>Use the verification code below to verify your email address:</p>
         <h1>${otp}</h1>
-        <p>This code expires in 60 seconds.</p>
+        <p>This code expires in 10 minutes.</p>
         <p>If you did not create this account, please ignore this email.</p>
       </div>
     `,
@@ -46,7 +46,7 @@ export const sendPasswordResetEmail = async (
         <p>We received a request to reset your OjaHub password.</p>
         <p>Use the code below to reset your password:</p>
         <h1>${otp}</h1>
-        <p>This code expires in 2 minutes(120 seconds).</p>
+        <p>This code expires in 10 minutes.</p>
         <p>If you did not request a password reset, please ignore this email.</p>
       </div>
     `,

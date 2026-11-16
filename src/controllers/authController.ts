@@ -3,24 +3,26 @@ import {
   verifyEmailService,
   resendOtpService,
   loginUserService,
-  refreshTokenService,
-  logoutService,
   logoutAllDevicesService,
   googleLoginService,
   forgotPasswordService,
   resetPasswordService,
+  getCurrentUserService,
 } from "../services/auth.service.js";
 import tryCatchFn from "../libs/tryCatchFn.js";
 import {
   sendErrorResponse,
   sendSuccessResponse,
 } from "../libs/response-handlers.js";
+import { startSession } from "../utils/startSession.js";
+import { endSession } from "../utils/sessionCleanup.js";
 
 export const registerUserController = tryCatchFn(async (req, res) => {
   const result = await registerUserService(req.body);
   if (!result.success) {
     return sendErrorResponse(res, result.status, result.message);
   }
+
   return sendSuccessResponse(res, 201, {
     success: true,
     message: "User registered successfully",
@@ -29,14 +31,17 @@ export const registerUserController = tryCatchFn(async (req, res) => {
     },
   });
 });
+
 export const verifyEmailController = tryCatchFn(async (req, res) => {
   const result = await verifyEmailService(req.body);
   if (!result.success) {
     return sendErrorResponse(res, result.status, result.message);
   }
-  return sendSuccessResponse<undefined>(res, 200, {
+  await startSession(req, result.user);
+  return sendSuccessResponse(res, 200, {
     success: true,
     message: result.message,
+    body: { user: result.user },
   });
 });
 export const resendOtpController = tryCatchFn(async (req, res) => {
@@ -102,44 +107,26 @@ export const loginController = tryCatchFn(async (req, res) => {
     return sendErrorResponse(res, result.status, result.message);
   }
 
+  await startSession(req, result.user, req.body.rememberMe === true);
+
   sendSuccessResponse(res, 200, {
     success: true,
     message: result.message,
     body: {
       user: result.user,
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
     },
   });
 });
-export const refreshTokenController = tryCatchFn(async (req, res) => {
-  let result = await refreshTokenService(req.body);
 
-  if (!result.success) {
-    return sendErrorResponse(res, result.status, result.message);
-  }
-
-  sendSuccessResponse(res, 200, {
-    success: true,
-    message: result.message,
-    body: {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-    },
-  });
-});
 export const logoutController = tryCatchFn(async (req, res) => {
-  let result = await logoutService(req.body);
+  await endSession(req, res);
 
-  if (!result.success) {
-    return sendErrorResponse(res, result.status, result.message);
-  }
-
-  sendSuccessResponse<undefined>(res, 200, {
+  return sendSuccessResponse<undefined>(res, 200, {
     success: true,
-    message: result.message,
+    message: "Logged out successfully",
   });
 });
+
 export const logoutAllDevicesController = tryCatchFn(async (req, res) => {
   if (!req.user) {
     return sendErrorResponse(res, 401, "Authentication required");
@@ -151,11 +138,14 @@ export const logoutAllDevicesController = tryCatchFn(async (req, res) => {
     return sendErrorResponse(res, result.status, result.message);
   }
 
+  await endSession(req, res);
+
   sendSuccessResponse<undefined>(res, 200, {
     success: true,
     message: result.message,
   });
 });
+
 export const googleLoginController = tryCatchFn(async (req, res) => {
   let { idToken } = req.body;
 
@@ -169,13 +159,32 @@ export const googleLoginController = tryCatchFn(async (req, res) => {
     return sendErrorResponse(res, result.status, result.message);
   }
 
+  await startSession(req, result.user);
   sendSuccessResponse(res, 200, {
     success: true,
     message: result.message,
     body: {
       user: result.user,
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
     },
+  });
+});
+
+export const meController = tryCatchFn(async (req, res) => {
+  const user = await getCurrentUserService(req.user!._id);
+
+  if (!user) {
+    //The account no longer exists: the session is useless, so remove it
+    await endSession(req, res);
+    return sendErrorResponse(
+      res,
+      401,
+      "Session is no longer valid. Please log in.",
+    );
+  }
+
+  return sendSuccessResponse(res, 200, {
+    success: true,
+    message: "Session is valid",
+    body: { user },
   });
 });

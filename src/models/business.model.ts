@@ -2,6 +2,7 @@ import mongoose, { Document, Schema } from "mongoose";
 export interface IBusiness extends Document {
   _id: mongoose.Types.ObjectId;
   name: string;
+  owner?: mongoose.Types.ObjectId;
 
   category?:
     | "Fabrics"
@@ -30,6 +31,13 @@ const BusinessSchema: Schema<IBusiness> = new Schema(
       type: String,
       required: true,
       trim: true,
+    },
+
+    owner: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      unique: true,
+      sparse: true,
     },
 
     category: {

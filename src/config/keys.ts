@@ -15,9 +15,6 @@ const ENV_VARS: EnvSpec[] = [
     key: "MONGO_URI",
     required: true,
   },
-  { key: "ACCESS_TOKEN_SECRET", required: true },
-
-  { key: "REFRESH_TOKEN_SECRET", required: true },
   {
     key: "NODE_ENV",
     required: true,

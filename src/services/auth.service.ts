@@ -1,6 +1,6 @@
+import { destroyAllUserSessions } from "./../utils/sessionCleanup.js";
 import bcrypt from "bcrypt";
 import userModel from "../models/user.model.js";
-import BusinessModel from "../models/business.model.js";
 import { prepareOtp } from "../utils/otp.js";
 import {
   sendVerificationEmail,
@@ -9,13 +9,7 @@ import {
 import { validatePassword } from "../utils/password.js";
 import { OAuth2Client } from "google-auth-library";
 import { env } from "../config/keys.js";
-import {
-  generateAccessToken,
-  generateRefreshToken,
-  hashRefreshToken,
-  verifyRefreshToken,
-} from "../utils/token.js";
-import RefreshTokenModel from "../models/refreshToken.model.js";
+import logger from "../config/logger.js";
 
 const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
@@ -32,7 +26,7 @@ type userProfile = {
   email: string;
   phone?: string;
   role: "user" | "admin";
-  businessId: string;
+  businessId?: string;
   emailVerified: boolean;
 };
 
@@ -42,7 +36,9 @@ type RegisterUserResult =
   | { success: true; user: userProfile; message: string }
   | ServiceError;
 
-type VerifyEmailResult = { success: true; message: string } | ServiceError;
+type VerifyEmailResult =
+  | { success: true; message: string; user: userProfile }
+  | ServiceError;
 
 type ResendOtpResult = { success: true; message: string } | ServiceError;
 
@@ -50,28 +46,9 @@ type LoginResult =
   | {
       success: true;
       user: userProfile;
-      accessToken: string;
-      refreshToken: string;
       message: string;
     }
   | ServiceError;
-
-type RefreshTokenFormData = {
-  refreshToken: string;
-};
-
-type RefreshTokenResult =
-  | {
-      success: true;
-      accessToken: string;
-      refreshToken: string;
-      message: string;
-    }
-  | ServiceError;
-
-type LogoutFormData = {
-  refreshToken: string;
-};
 
 type LogoutResult =
   | {
@@ -181,6 +158,15 @@ export const verifyEmailService = async (
   return {
     success: true,
     message: "Email verified successfully",
+    user: {
+      _id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      businessId: user.businessId?.toString(),
+      emailVerified: true,
+    },
   };
 };
 
@@ -214,19 +200,41 @@ export const registerUserService = async (
 
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
-  const { otp, otpData } = await prepareOtp(2);
-  const newBusiness = await BusinessModel.create({
-    name: `${name.trim()}'s Business`,
-  });
-  const newUser = await userModel.create({
-    email: normalizedEmail,
-    name: name.trim(),
-    phone: normalizedPhone,
-    password: hashedPassword,
-    businessId: newBusiness._id,
-    otp: otpData,
-  });
-  await sendVerificationEmail(normalizedEmail, otp);
+  const { otp, otpData } = await prepareOtp();
+
+  let newUser;
+  try {
+    newUser = await userModel.create({
+      email: normalizedEmail,
+      name: name.trim(),
+      phone: normalizedPhone,
+      password: hashedPassword,
+      otp: otpData,
+    });
+  } catch (error) {
+    // Two requests at the same moment: the unique index catches the second one
+    if ((error as { code?: number }).code === 11000) {
+      return {
+        success: false,
+        status: 409,
+        message: "Email or phone number already exists",
+      };
+    }
+    throw error;
+  }
+
+  try {
+    await sendVerificationEmail(normalizedEmail, otp);
+  } catch (error) {
+    // No orphan accounts: if the code can't be sent, the registration is undone
+    await userModel.deleteOne({ _id: newUser._id });
+    logger.error({ err: error }, "Verification email failed; user removed");
+    return {
+      success: false,
+      status: 503,
+      message: "We couldn't send the verification email. Please try again.",
+    };
+  }
   return {
     success: true,
     user: {
@@ -235,7 +243,7 @@ export const registerUserService = async (
       email: newUser.email,
       phone: newUser.phone,
       role: newUser.role,
-      businessId: newUser.businessId.toString(),
+      businessId: newUser.businessId?.toString(),
       emailVerified: newUser.emailVerified,
     },
     message: "Registration successful. Please verify your email.",
@@ -301,7 +309,7 @@ export const resendOtpService = async (
     };
   }
 
-  let { otp, otpData } = await prepareOtp(2);
+  let { otp, otpData } = await prepareOtp();
 
   user.otp = {
     ...otpData,
@@ -318,77 +326,61 @@ export const resendOtpService = async (
     message: "A new verification code has been sent to your email",
   };
 };
+
+const RESET_MESSAGE =
+  "If an eligible account exists, a password reset code has been sent.";
+
 export const forgotPasswordService = async (
   formData: ForgotPasswordFormData,
 ): Promise<ForgotPasswordResult> => {
-  let normalizedEmail = formData.email.trim().toLowerCase();
+  const normalizedEmail = formData.email.trim().toLowerCase();
+  const reply = { success: true as const, message: RESET_MESSAGE };
 
-  let user = await userModel
-    .findOne({ email: normalizedEmail })
-    .select("+password");
+  const user = await userModel.findOne({ email: normalizedEmail });
 
-  let genericMessage =
-    "If an eligible account exists, a password reset code has been sent.";
+  // Unknown or unverified account: same reply, nothing sent
+  if (!user || !user.emailVerified) return reply;
 
-  // Check whether the account exists and its email is verified.
-  if (!user || !user.emailVerified) {
-    return {
-      success: true,
-      message: genericMessage,
-    };
+  const now = new Date();
+  const current = user.passwordResetOtp;
+
+  // 60-second cooldown between codes
+  if (
+    current?.lastSentAt &&
+    now.getTime() - current.lastSentAt.getTime() < 60 * 1000
+  ) {
+    return reply;
   }
 
-  let now = new Date();
-
-  // Enforce the 60-second cooldown.
-  let lastSentAt = user.passwordResetOtp?.lastSentAt;
-
-  if (lastSentAt && now.getTime() - lastSentAt.getTime() < 60 * 1000) {
-    return {
-      success: true,
-      message: genericMessage,
-    };
-  }
-
-  // Check whether the user is still within the one-hour resend window.
-  let resendWindowStartedAt = user.passwordResetOtp?.resendWindowStartedAt;
-
-  let isWithinResendWindow = Boolean(
-    resendWindowStartedAt &&
-    now.getTime() - resendWindowStartedAt.getTime() < 60 * 60 * 1000,
+  // At most 5 codes per hour
+  const windowStartedAt = current?.resendWindowStartedAt;
+  const inWindow = Boolean(
+    windowStartedAt &&
+    now.getTime() - windowStartedAt.getTime() < 60 * 60 * 1000,
   );
+  if (inWindow && (current?.resendCount ?? 0) >= 5) return reply;
 
-  // Enforce a maximum of five requests per hour.
-  if (isWithinResendWindow && (user.passwordResetOtp?.resendCount ?? 0) >= 5) {
-    return {
-      success: true,
-      message: genericMessage,
-    };
-  }
-
-  // Generate a new password reset OTP.
-  let { otp, otpData } = await prepareOtp();
+  const { otp, otpData } = await prepareOtp();
 
   user.passwordResetOtp = {
     code: otpData.code,
     expiresAt: otpData.expiresAt,
     attempts: 0,
     lastSentAt: now,
-    resendCount: isWithinResendWindow
-      ? (user.passwordResetOtp?.resendCount ?? 0) + 1
-      : 1,
-    resendWindowStartedAt: isWithinResendWindow ? resendWindowStartedAt! : now,
+    resendCount: inWindow ? (current?.resendCount ?? 0) + 1 : 1,
+    resendWindowStartedAt: inWindow ? windowStartedAt! : now,
   };
-
   await user.save();
 
-  await sendPasswordResetEmail(normalizedEmail, otp);
+  // Not awaited, so the reply is identical and just as fast for every email.
+  // If sending fails we only log it: an error here would reveal that the account exists.
+  sendPasswordResetEmail(normalizedEmail, otp).catch((error) =>
+    logger.error({ err: error }, "Password reset email failed"),
+  );
 
-  return {
-    success: true,
-    message: genericMessage,
-  };
+  return reply;
 };
+
 export const resetPasswordService = async (
   formData: ResetPasswordFormData,
 ): Promise<ResetPasswordResult> => {
@@ -406,7 +398,9 @@ export const resetPasswordService = async (
     };
   }
 
-  let user = await userModel.findOne({ email: normalizedEmail });
+  let user = await userModel
+    .findOne({ email: normalizedEmail })
+    .select("+password");
 
   if (!user || !user.passwordResetOtp) {
     return {
@@ -466,10 +460,12 @@ export const resetPasswordService = async (
   let salt = await bcrypt.genSalt(10);
   user.password = await bcrypt.hash(newPassword, salt);
   user.passwordResetOtp = undefined;
+  user.failedLoginAttempts = 0;
+  user.lockUntil = undefined;
 
   await user.save();
 
-  await RefreshTokenModel.deleteMany({ user: user._id });
+  await destroyAllUserSessions(user._id.toString());
 
   return {
     success: true,
@@ -537,22 +533,7 @@ export const loginUserService = async (
   user.lockUntil = undefined;
 
   await user.save();
-  let accessToken = generateAccessToken(user._id.toString());
 
-  let refreshToken = generateRefreshToken(user._id.toString(), rememberMe);
-  let tokenHash = hashRefreshToken(refreshToken);
-  let sessionDurationDays: 7 | 30 = rememberMe ? 30 : 7;
-
-  let expiresAt = new Date(
-    Date.now() + sessionDurationDays * 24 * 60 * 60 * 1000,
-  );
-
-  await RefreshTokenModel.create({
-    user: user._id,
-    tokenHash,
-    expiresAt,
-    sessionDurationDays,
-  });
   return {
     success: true,
     user: {
@@ -561,11 +542,9 @@ export const loginUserService = async (
       email: user.email,
       phone: user.phone,
       role: user.role,
-      businessId: user.businessId.toString(),
+      businessId: user.businessId?.toString(),
       emailVerified: user.emailVerified,
     },
-    accessToken,
-    refreshToken,
     message: "Login successful",
   };
 };
@@ -582,7 +561,7 @@ export const googleLoginService = async (
       audience: env.GOOGLE_CLIENT_ID,
     });
   } catch (error) {
-    console.error("Google token verification error:", error);
+    logger.error({ err: error }, "Google token verification failed");
 
     return {
       success: false,
@@ -617,44 +596,30 @@ export const googleLoginService = async (
       };
     }
 
+    // Google has just proved who owns this email: drop any credentials an
+    // unverified registrant set on it
+    if (!user.emailVerified) {
+      user.set("password", undefined);
+      user.otp = undefined;
+      user.failedLoginAttempts = 0;
+      user.lockUntil = undefined;
+    }
+
     user.googleId = payload.sub;
     user.emailVerified = true;
 
     await user.save();
   }
   if (!user) {
-    let business = await BusinessModel.create({
-      name: `${payload.name || "My"}'s Business`,
-    });
-
     user = await userModel.create({
       name: payload.name || "Google User",
       email: payload.email.toLowerCase(),
       googleId: payload.sub,
       role: "user",
-      businessId: business._id,
       emailVerified: true,
     });
   }
 
-  let accessToken = generateAccessToken(user._id.toString());
-
-  let refreshToken = generateRefreshToken(user._id.toString(), false);
-
-  let tokenHash = hashRefreshToken(refreshToken);
-
-  let sessionDurationDays: 7 | 30 = 7;
-
-  let expiresAt = new Date(
-    Date.now() + sessionDurationDays * 24 * 60 * 60 * 1000,
-  );
-
-  await RefreshTokenModel.create({
-    user: user._id,
-    tokenHash,
-    expiresAt,
-    sessionDurationDays,
-  });
   return {
     success: true,
     user: {
@@ -663,131 +628,36 @@ export const googleLoginService = async (
       email: user.email,
       phone: user.phone,
       role: user.role,
-      businessId: user.businessId.toString(),
+      businessId: user.businessId?.toString(),
       emailVerified: user.emailVerified,
     },
-    accessToken,
-    refreshToken,
     message: "Google login successful",
   };
 };
-export const refreshTokenService = async (
-  formData: RefreshTokenFormData,
-): Promise<RefreshTokenResult> => {
-  let { refreshToken } = formData;
 
-  let decoded = verifyRefreshToken(refreshToken);
-
-  if (!decoded) {
-    return {
-      success: false,
-      status: 401,
-      message: "Invalid or expired refresh token",
-    };
-  }
-  let tokenHash = hashRefreshToken(refreshToken);
-  let storedToken = await RefreshTokenModel.findOne({
-    user: decoded.userId,
-    tokenHash,
-  });
-  if (!storedToken) {
-    return {
-      success: false,
-      status: 401,
-      message: "Refresh token session is invalid or expired",
-    };
-  }
-
-  if (storedToken.expiresAt.getTime() <= Date.now()) {
-    await RefreshTokenModel.deleteOne({ _id: storedToken._id });
-
-    return {
-      success: false,
-      status: 401,
-      message: "Refresh token session is invalid or expired",
-    };
-  }
-  let user = await userModel.findById(decoded.userId);
-
-  if (!user || !user.emailVerified) {
-    await RefreshTokenModel.deleteOne({ _id: storedToken._id });
-
-    return {
-      success: false,
-      status: 401,
-      message: "User account is unavailable or not verified",
-    };
-  }
-  let accessToken = generateAccessToken(user._id.toString());
-
-  let newRefreshToken = generateRefreshToken(
-    user._id.toString(),
-    storedToken.sessionDurationDays === 30,
-  );
-  let newTokenHash = hashRefreshToken(newRefreshToken);
-  let sessionDurationDays = storedToken.sessionDurationDays;
-
-  let expiresAt = new Date(
-    Date.now() + sessionDurationDays * 24 * 60 * 60 * 1000,
-  );
-  let updatedToken = await RefreshTokenModel.findOneAndUpdate(
-    {
-      _id: storedToken._id,
-      tokenHash,
-    },
-    {
-      $set: {
-        tokenHash: newTokenHash,
-        expiresAt,
-      },
-    },
-    { new: true },
-  );
-  if (!updatedToken) {
-    return {
-      success: false,
-      status: 401,
-      message: "Refresh token has already been used or is invalid",
-    };
-  }
-  return {
-    success: true,
-    accessToken,
-    refreshToken: newRefreshToken,
-    message: "Tokens refreshed successfully",
-  };
-};
-export const logoutService = async (
-  formData: LogoutFormData,
-): Promise<LogoutResult> => {
-  let { refreshToken } = formData;
-
-  let decoded = verifyRefreshToken(refreshToken);
-
-  if (!decoded) {
-    return {
-      success: false,
-      status: 401,
-      message: "Invalid or expired refresh token",
-    };
-  }
-
-  let tokenHash = hashRefreshToken(refreshToken);
-
-  await RefreshTokenModel.deleteOne({ tokenHash });
-
-  return {
-    success: true,
-    message: "Logged out successfully",
-  };
-};
 export const logoutAllDevicesService = async (
   userId: string,
 ): Promise<LogoutResult> => {
-  await RefreshTokenModel.deleteMany({ user: userId });
+  await destroyAllUserSessions(userId);
 
   return {
     success: true,
     message: "Successfully logged out from all devices",
+  };
+};
+
+export const getCurrentUserService = async (userId: string) => {
+  const user = await userModel.findById(userId);
+  if (!user) return null;
+
+  return {
+    _id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    businessId: user.businessId?.toString(),
+    emailVerified: user.emailVerified,
+    onboardingStep: user.onboardingStep,
   };
 };
