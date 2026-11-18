@@ -8,7 +8,7 @@ import {
   createExpressLogger,
   notFoundRoutes,
   globalErrorHandlers,
-} from "./middlewares/error.middleware";
+} from "./middlewares/error.middleware.js";
 
 declare global {
   namespace Express {

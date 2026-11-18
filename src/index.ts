@@ -1,7 +1,7 @@
-import { connectToDB, gracefulShutdown } from "./config/database";
-import { env } from "./config/keys";
-import logger, { logError } from "./config/logger";
-import app from "./app";
+import { connectToDB, gracefulShutdown } from "./config/database.js";
+import { env } from "./config/keys.js";
+import logger, { logError } from "./config/logger.js";
+import app from "./app.js";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3800;
 
