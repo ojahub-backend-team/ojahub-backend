@@ -8,6 +8,7 @@ import {
   saveLocationStep2Controller,
   saveProductStep3Controller,
   skipProductStep3Controller,
+  getOnboardingStateController,
 } from "../controllers/onboarding.controller.js";
 import { validate } from "../middlewares/validate.middleware.js";
 import { businessStep1Schema } from "../validators/auth.validator.js";
@@ -47,4 +48,6 @@ router.post(
   requireBusiness,
   skipProductStep3Controller,
 );
+
+router.get("/", verifySession, getOnboardingStateController);
 export default router;
