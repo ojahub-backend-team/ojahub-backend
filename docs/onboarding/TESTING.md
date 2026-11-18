@@ -16,3 +16,16 @@ Tool: Postman. Log in first (POST /api/auth/login) so the `_ojahub` cookie is se
 | T-O16 | PUT /business | No cookie | 401 | 401 "Access denied. Please log in." | Pass | 18 Nov 2026 |
 | T-O17 | POST /product/skip | Step 3 skipped | 200, onboardingStep stays 3 | 200 "Product step skipped", onboardingStep 3 | Pass | 18 Nov 2026 |
 | T-O18 | PUT /product | Extra businessId in the body | 200, field ignored, own business updated | 200, same product _id, not touched by the body's businessId | Pass | 18 Nov 2026 |
+
+| T-S1 | GET /api/onboarding | No cookie | 401 | 401 "Access denied. Please log in." | Pass | 18 Nov 2026 |
+| T-S2 | GET /api/onboarding | User who finished step 3 | 200, step 3, saved business, location and product | 200, step 3, Test Fabrics, Main Shop, Lace Fabric 5500000 kobo, quantity 70 | Pass | 18 Nov 2026 |
+| T-S3 | GET /api/onboarding | Verified user with no business | 200, step 0, all null | 200, step 0, business, location and product null | Pass | 18 Nov 2026 |
+| T-S4-first | PUT and GET /business | Two users, one Postman cookie jar | Each sees own data | Inconclusive: both sessions shared one cookie jar; Atlas showed each user pointing at its own business | Inconclusive | 18 Nov 2026 |
+| T-S4a | PUT /business | testtrader4 first save (separate host) | 200, new business, step 1 | 200, new business created, step 1 | Pass | 18 Nov 2026 |
+| T-S4b | GET /api/onboarding | testtrader4 after save | Only own business | Only "Trader Four Phones", location and product null | Pass | 18 Nov 2026 |
+| T-S4c | GET /api/onboarding | testtrader2 after testtrader4 wrote | Unchanged | Test Fabrics, Main Shop, Lace Fabric unchanged | Pass | 18 Nov 2026 |
+| T-S4d | GET /api/onboarding | testtrader4 after testtrader2 wrote | Unchanged | | | |
+
+| T-S4d-first | PUT /business | testtrader2 write, then check testtrader4 | testtrader4 unchanged | Inconclusive: the PUT went out with testtrader4's cookie (business _id 6afda755), so the direction was not tested | Inconclusive | 18 Nov 2026 |
+| T-S4d | PUT /business, GET /api/onboarding | testtrader2 renames its business, then testtrader4 reads | testtrader4 still shows its own business | testtrader4 still shows "Trader Four Phones"; testtrader2's PUT returned its own business _id 6afcadbc | Pass | 18 Nov 2026 |
+| T-S5 | PUT /business | Re-save step 1 after finishing step 3 | 200, onboardingStep does not go down | 200, onboardingStep stays 3 | Pass | 18 Nov 2026 |
