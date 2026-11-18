@@ -60,7 +60,7 @@ export const saveFirstProductService = async (
       success: false,
       status: 409,
       message:
-        "Setup is already complete. Manage products from the procucts screen",
+        "Setup is already complete. Manage products from the products screen",
     };
   }
 
@@ -79,7 +79,7 @@ export const saveFirstProductService = async (
 
   //Repeatable: one onboarding product per business, updated on every save
   const product = await ProductModel.findOneAndUpdate(
-    { businessId: user.businessId, source: "onbrarding" },
+    { businessId: user.businessId, source: "onboarding" },
     {
       $set: {
         name: data.name,
