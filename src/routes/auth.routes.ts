@@ -23,50 +23,63 @@ import {
 } from "../validators/auth.validator.js";
 import { verifySession } from "../middlewares/auth.middleware.js";
 import {
-  authRateLimiter,
-  otpRateLimiter,
-  passwordResetRateLimiter,
+  registerRateLimiter,
+  loginRateLimiter,
+  googleRateLimiter,
+  verifyEmailRateLimiter,
+  resendOtpRateLimiter,
+  forgotPasswordRateLimiter,
+  resetPasswordRateLimiter,
 } from "../middlewares/rateLimiter.js";
 
 const router = Router();
+
 router.post(
   "/register",
   validate(registerSchema),
-  authRateLimiter,
+  registerRateLimiter,
   registerUserController,
 );
+
 router.post(
   "/verify-email",
-  otpRateLimiter,
+  verifyEmailRateLimiter,
   validate(verifyEmailSchema),
   verifyEmailController,
 );
+
 router.post(
   "/resend-otp",
-  otpRateLimiter,
+  resendOtpRateLimiter,
   validate(resendOtpSchema),
   resendOtpController,
 );
-router.post("/login", validate(loginSchema), authRateLimiter, loginController);
+
+router.post("/login", validate(loginSchema), loginRateLimiter, loginController);
 router.post("/logout", logoutController);
 router.post("/logout-all", verifySession, logoutAllDevicesController);
+
 router.post(
   "/google",
   validate(googleLoginSchema),
-  authRateLimiter,
+  googleRateLimiter,
   googleLoginController,
 );
+
 router.post(
   "/forgot-password",
-  passwordResetRateLimiter,
+  forgotPasswordRateLimiter,
   validate(forgotPasswordSchema),
   forgotPasswordController,
 );
+
 router.post(
   "/reset-password",
-  passwordResetRateLimiter,
+  resetPasswordRateLimiter,
   validate(resetPasswordSchema),
   resetPasswordController,
 );
+
 router.get("/me", verifySession, meController);
+
 export default router;
