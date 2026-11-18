@@ -8,6 +8,7 @@ import {
   saveLocationStep2Controller,
   saveProductStep3Controller,
   skipProductStep3Controller,
+  savePlanStep4Controller,
   getOnboardingStateController,
 } from "../controllers/onboarding.controller.js";
 import { validate } from "../middlewares/validate.middleware.js";
@@ -16,8 +17,11 @@ import {
   locationStep2Schema,
   productStep3Schema,
 } from "../validators/onboarding.validator.js";
+import { planStep4Schema } from "../validators/subscription.validator.js";
 
 const router = Router();
+
+router.get("/", verifySession, getOnboardingStateController);
 
 router.put(
   "/business",
@@ -37,7 +41,6 @@ router.put(
 router.put(
   "/product",
   verifySession,
-  requireBusiness,
   validate(productStep3Schema),
   saveProductStep3Controller,
 );
@@ -49,5 +52,12 @@ router.post(
   skipProductStep3Controller,
 );
 
-router.get("/", verifySession, getOnboardingStateController);
+router.put(
+  "/plan",
+  verifySession,
+  requireBusiness,
+  validate(planStep4Schema),
+  savePlanStep4Controller,
+);
+
 export default router;
