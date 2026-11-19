@@ -222,12 +222,12 @@ export const registerUserService = async (
     }
     throw error;
   }
-
+  
   try {
     await sendVerificationEmail(normalizedEmail, otp);
   } catch (error) {
     // No orphan accounts: if the code can't be sent, the registration is undone
-    await userModel.deleteOne({ _id: newUser._id });
+    //await userModel.deleteOne({ _id: newUser._id });
     logger.error({ err: error }, "Verification email failed; user removed");
     return {
       success: false,
@@ -249,6 +249,7 @@ export const registerUserService = async (
     message: "Registration successful. Please verify your email.",
   };
 };
+
 export const resendOtpService = async (
   formData: ResendOtpFormData,
 ): Promise<ResendOtpResult> => {
