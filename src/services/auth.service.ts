@@ -197,10 +197,11 @@ export const registerUserService = async (
       message: "Email or phone number already exists",
     };
   }
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password, salt);
-  const { otp, otpData } = await prepareOtp();
- 
+  const [hashedPassword, { otp, otpData }] = await Promise.all([
+    bcrypt.hash(password, 10),
+    prepareOtp(),
+  ]);
+
   const newUser = await userModel.create({
     email: normalizedEmail,
     name: name.trim(),
@@ -209,31 +210,10 @@ export const registerUserService = async (
     otp: otpData,
   });
 
-  // try {
-  // } catch (error) {
-  //   // Two requests at the same moment: the unique index catches the second one
-  //   if ((error as { code?: number }).code === 11000) {
-  //     return {
-  //       success: false,
-  //       status: 409,
-  //       message: "Email or phone number already exists",
-  //     };
-  //   }
-  //   throw error;
-  // }
-  
-  try {
-    await sendVerificationEmail(normalizedEmail, otp);
-  } catch (error) {
-    // No orphan accounts: if the code can't be sent, the registration is undone
-    //await userModel.deleteOne({ _id: newUser._id });
-    logger.error({ err: error }, "Verification email failed; user removed");
-    return {
-      success: false,
-      status: 503,
-      message: "We couldn't send the verification email. Please try again.",
-    };
-  }
+  void sendVerificationEmail(normalizedEmail, otp).catch((error) =>
+    logger.error({ err: error }, "Verification email delivery failed"),
+  );
+
   return {
     success: true,
     user: {
@@ -319,11 +299,13 @@ export const resendOtpService = async (
 
   await user.save();
 
-  await sendVerificationEmail(normalizedEmail, otp);
+  void sendVerificationEmail(normalizedEmail, otp).catch((error) =>
+    logger.error({ err: error }, "Verification email delivery failed"),
+  );
 
   return {
     success: true,
-    message: "A new verification code has been sent to your email",
+    message: "A new verification code is being sent to your email",
   };
 };
 
@@ -500,11 +482,12 @@ export const loginUserService = async (
       message: "Account temporarily locked. Please try again later.",
     };
   }
-  if (user.lockUntil && user.lockUntil.getTime() <= Date.now()) {
+  const lockExpired = Boolean(
+    user.lockUntil && user.lockUntil.getTime() <= Date.now(),
+  );
+  if (lockExpired) {
     user.failedLoginAttempts = 0;
     user.lockUntil = undefined;
-
-    await user.save();
   }
   let isPasswordCorrect = await bcrypt.compare(password, user.password);
   if (!isPasswordCorrect) {
@@ -523,16 +506,26 @@ export const loginUserService = async (
     };
   }
   if (!user.emailVerified) {
+    if (lockExpired) {
+      await user.save();
+    }
+
     return {
       success: false,
       status: 403,
       message: "Please verify your email before logging in",
     };
   }
+  const shouldSaveLoginState =
+    lockExpired ||
+    user.failedLoginAttempts !== 0 ||
+    user.lockUntil !== undefined;
   user.failedLoginAttempts = 0;
   user.lockUntil = undefined;
 
-  await user.save();
+  if (shouldSaveLoginState) {
+    await user.save();
+  }
 
   return {
     success: true,

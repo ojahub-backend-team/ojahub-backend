@@ -36,15 +36,7 @@ const ENV_VARS: EnvSpec[] = [
     required: true,
   },
   {
-    key: "BREVO_SMTP_HOST",
-    required: true,
-  },
-  {
-    key: "BREVO_SMTP_USER",
-    required: true,
-  },
-  {
-    key: "BREVO_SMTP_KEY",
+    key: "BREVO_API_KEY",
     required: true,
   },
   {
