@@ -197,31 +197,30 @@ export const registerUserService = async (
       message: "Email or phone number already exists",
     };
   }
-
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
   const { otp, otpData } = await prepareOtp();
+ 
+  const newUser = await userModel.create({
+    email: normalizedEmail,
+    name: name.trim(),
+    phone: normalizedPhone,
+    password: hashedPassword,
+    otp: otpData,
+  });
 
-  let newUser;
-  try {
-    newUser = await userModel.create({
-      email: normalizedEmail,
-      name: name.trim(),
-      phone: normalizedPhone,
-      password: hashedPassword,
-      otp: otpData,
-    });
-  } catch (error) {
-    // Two requests at the same moment: the unique index catches the second one
-    if ((error as { code?: number }).code === 11000) {
-      return {
-        success: false,
-        status: 409,
-        message: "Email or phone number already exists",
-      };
-    }
-    throw error;
-  }
+  // try {
+  // } catch (error) {
+  //   // Two requests at the same moment: the unique index catches the second one
+  //   if ((error as { code?: number }).code === 11000) {
+  //     return {
+  //       success: false,
+  //       status: 409,
+  //       message: "Email or phone number already exists",
+  //     };
+  //   }
+  //   throw error;
+  // }
   
   try {
     await sendVerificationEmail(normalizedEmail, otp);
