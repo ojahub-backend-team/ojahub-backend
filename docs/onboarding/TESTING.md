@@ -29,3 +29,13 @@ Tool: Postman. Log in first (POST /api/auth/login) so the `_ojahub` cookie is se
 | T-S4d-first | PUT /business | testtrader2 write, then check testtrader4 | testtrader4 unchanged | Inconclusive: the PUT went out with testtrader4's cookie (business _id 6afda755), so the direction was not tested | Inconclusive | 18 Nov 2026 |
 | T-S4d | PUT /business, GET /api/onboarding | testtrader2 renames its business, then testtrader4 reads | testtrader4 still shows its own business | testtrader4 still shows "Trader Four Phones"; testtrader2's PUT returned its own business _id 6afcadbc | Pass | 18 Nov 2026 |
 | T-S5 | PUT /business | Re-save step 1 after finishing step 3 | 200, onboardingStep does not go down | 200, onboardingStep stays 3 | Pass | 18 Nov 2026 |
+
+| T-P1 | PUT /plan | No cookie (sent from PowerShell) | 401 | 401 | Pass | 19 Nov 2026 |
+| T-P2 | PUT /plan | Invalid plan "weekly" | 400, details name plan | 400 "Validation failed", field plan | Pass | 19 Nov 2026 |
+| T-P3 | PUT /plan | Empty body | 400, details name plan | 400 "Validation failed", field plan | Pass | 19 Nov 2026 |
+| T-P4 | PUT /plan | First plan choice (monthly) | 200, trial started, 14 days, step 4 | 200 "Free trial started", trialing, daysLeft 14, step 4 | Pass | 19 Nov 2026 |
+| T-P5 | PUT /plan | Change plan during the trial (yearly) | 200, plan and price updated, trial end unchanged | 200 "Plan updated", 4800000 kobo, endsAt unchanged (2026-12-03T14:05:22.014Z) | Pass | 19 Nov 2026 |
+| T-P6 | PUT /plan | User still at step 1 (127.0.0.1) | 400 "Finish the earlier setup steps..." | 400 "Finish the earlier setup steps before choosing a plan" | Pass | 19 Nov 2026 |
+| T-P7 | PUT /plan | Trial already over (trialEndsAt set in the past) | 409 "Your subscription has already started..." | 409 "Your subscription has already started. Change your plan from the billing screen." | Pass | 19 Nov 2026 |
+
+monthly, six_months, yearly. Prices are in kobo. The free trial lasts 14 days from the first plan choice and is never restarted by changing plan. Status (trialing, active, expired) is calculated from the dates on each request.
