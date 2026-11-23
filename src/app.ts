@@ -16,6 +16,7 @@ import { compressionOptions, helmetOptions } from "./libs/option.js";
 import authRoutes from "./routes/auth.routes.js";
 import onboardingRoutes from "./routes/onboarding.routes.js";
 import subscriptionRoutes from "./routes/subscription.routes.js";
+import paymentRoutes from "./routes/payment.routes.js";
 
 declare global {
   namespace Express {
@@ -91,6 +92,7 @@ app.disable("x-powered-by");
 app.use("/api/auth", authRoutes);
 app.use("/api/onboarding", onboardingRoutes);
 app.use("/api/subscription", subscriptionRoutes);
+app.use("/api/payment", paymentRoutes);
 
 //handle 404 and global error
 app.use(notFoundRoutes);

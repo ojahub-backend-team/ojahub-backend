@@ -43,6 +43,10 @@ const ENV_VARS: EnvSpec[] = [
     key: "BREVO_SENDER_EMAIL",
     required: true,
   },
+  {
+    key: "PAYSTACK_SECRET_KEY",
+    required: true,
+  },
 ];
 
 interface Env {
