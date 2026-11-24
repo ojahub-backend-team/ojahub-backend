@@ -41,6 +41,7 @@ router.put(
 router.put(
   "/product",
   verifySession,
+  requireBusiness,
   validate(productStep3Schema),
   saveProductStep3Controller,
 );
