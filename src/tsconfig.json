@@ -9,7 +9,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "outDir": "./dist",
+    "outDir": "../dist",
     "rootDir": ".",
     "noEmit": false,
     "types": ["node", "bcrypt"],
