@@ -1,16 +1,27 @@
 import SubscriptionModel from "../models/subscription.model.js";
+import PaymentModel from "../models/payment.model.js";
 import UserModel from "../models/user.model.js";
-import { PLANS, TRIAL_DAYS, type PlanId } from "../config/plans.js";
+import {
+  FREE_TRIAL_PLAN_ID,
+  PLANS,
+  TRIAL_DAYS,
+  type PlanId,
+  type SubscriptionPlanId,
+} from "../config/plans.js";
 import {
   getSubscriptionStatus,
   daysLeft,
   type SubscriptionStatus,
 } from "../utils/subscriptionStatus.js";
+import {
+  initializeSubscriptionPaymentService,
+  PaymentServiceError,
+} from "./payment.service.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type SubscriptionDto = {
-  plan: PlanId;
+  plan: SubscriptionPlanId;
   planLabel: string;
   priceKobo: number;
   status: SubscriptionStatus;
@@ -19,9 +30,9 @@ export type SubscriptionDto = {
 };
 
 type SubscriptionLike = {
-  plan: PlanId;
+  plan: SubscriptionPlanId;
   priceKobo: number;
-  trialEndsAt: Date;
+  trialEndsAt?: Date | null;
   currentPeriodEnd?: Date | null;
 };
 
@@ -30,14 +41,15 @@ export const toSubscriptionDto = (
   now: Date = new Date(),
 ): SubscriptionDto => {
   const status = getSubscriptionStatus(sub, now);
-  const endsAt =
-    status === "active" && sub.currentPeriodEnd
-      ? sub.currentPeriodEnd
-      : sub.trialEndsAt;
+
+  const endsAt = sub.currentPeriodEnd ?? sub.trialEndsAt ?? now;
 
   return {
     plan: sub.plan,
-    planLabel: PLANS[sub.plan].label,
+    planLabel:
+      sub.plan === FREE_TRIAL_PLAN_ID
+        ? "Free Trial"
+        : PLANS[sub.plan as PlanId].label,
     priceKobo: sub.priceKobo,
     status,
     endsAt,
@@ -48,67 +60,149 @@ export const toSubscriptionDto = (
 type ChoosePlanResult =
   | {
       success: true;
+      type: "trial";
       message: string;
       subscription: SubscriptionDto;
       onboardingStep: number;
     }
-  | { success: false; status: number; message: string };
+  | {
+      success: true;
+      type: "payment";
+      message: string;
+      payment: Awaited<ReturnType<typeof initializeSubscriptionPaymentService>>;
+      onboardingStep: number;
+    }
+  | {
+      success: false;
+      status: number;
+      message: string;
+    };
 
 export const choosePlanService = async (
   userId: string,
-  planId: PlanId,
+  planId: SubscriptionPlanId,
 ): Promise<ChoosePlanResult> => {
   const user = await UserModel.findById(userId).select(
     "businessId onboardingStep",
   );
 
   if (!user) {
-    return { success: false, status: 404, message: "User not found" };
+    return {
+      success: false,
+      status: 404,
+      message: "User not found.",
+    };
   }
 
   if (!user.businessId) {
     return {
       success: false,
       status: 403,
-      message: "Add your business details first",
+      message: "Add your business details first.",
     };
   }
 
-  // Step 3 may be skipped, but it leaves the step at 3, so 3 is the minimum
   if (user.onboardingStep < 3) {
     return {
       success: false,
       status: 400,
-      message: "Finish the earlier setup steps before choosing a plan",
+      message: "Finish the earlier setup steps before choosing a plan.",
     };
   }
 
-  const existing = await SubscriptionModel.findOne({
-    businessId: user.businessId,
+  const businessId = user.businessId;
+
+  const pendingPayment = await PaymentModel.findOne({
+    businessId,
+    status: "pending",
   });
 
-  // Only a running trial can be changed here. Later changes belong to billing.
-  if (existing && getSubscriptionStatus(existing) !== "trialing") {
+  if (pendingPayment) {
     return {
       success: false,
       status: 409,
       message:
-        "Your subscription has already started. Change your plan from the billing screen.",
+        "You already have a pending payment. Complete or resolve it before selecting another plan.",
     };
   }
 
+  const existing = await SubscriptionModel.findOne({ businessId });
   const now = new Date();
-  const trialEndsAt = new Date(now.getTime() + TRIAL_DAYS * DAY_MS);
-  const plan = PLANS[planId];
 
-  // $setOnInsert only runs when the record is created, so choosing a plan again
-  // changes the plan but never restarts or extends the trial.
-  const save = () =>
-    SubscriptionModel.findOneAndUpdate(
-      { businessId: user.businessId },
+  if (existing) {
+    const status = getSubscriptionStatus(existing, now);
+
+    if (status === "active") {
+      return {
+        success: false,
+        status: 409,
+        message: "Your subscription is already active.",
+      };
+    }
+
+    if (status === "trialing") {
+      return {
+        success: false,
+        status: 409,
+        message:
+          "Your free trial is still active. You can choose a paid plan after it expires.",
+      };
+    }
+
+    // An existing expired subscription means the user has already
+    // used their trial or previously had a paid subscription.
+    if (planId === FREE_TRIAL_PLAN_ID) {
+      return {
+        success: false,
+        status: 409,
+        message:
+          "Your free trial cannot be restarted. Please choose a paid plan.",
+      };
+    }
+  }
+
+  if (planId !== FREE_TRIAL_PLAN_ID) {
+    try {
+      const payment = await initializeSubscriptionPaymentService(
+        userId,
+        planId as PlanId,
+      );
+
+      return {
+        success: true,
+        type: "payment",
+        message: "Continue to Paystack to complete your payment.",
+        payment,
+        onboardingStep: user.onboardingStep,
+      };
+    } catch (error) {
+      if (error instanceof PaymentServiceError) {
+        return {
+          success: false,
+          status: error.statusCode,
+          message: error.message,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  const trialStartedAt = now;
+  const trialEndsAt = new Date(now.getTime() + TRIAL_DAYS * DAY_MS);
+
+  let subscription;
+
+  try {
+    subscription = await SubscriptionModel.findOneAndUpdate(
+      { businessId },
       {
-        $set: { plan: planId, priceKobo: plan.priceKobo },
-        $setOnInsert: { trialStartedAt: now, trialEndsAt },
+        $setOnInsert: {
+          plan: FREE_TRIAL_PLAN_ID,
+          priceKobo: 0,
+          trialStartedAt,
+          trialEndsAt,
+        },
       },
       {
         upsert: true,
@@ -117,29 +211,28 @@ export const choosePlanService = async (
         setDefaultsOnInsert: true,
       },
     );
-
-  let subscription;
-  try {
-    subscription = await save();
   } catch (error) {
-    // Two requests created the record at the same moment: the second one retries as an update
     if ((error as { code?: number }).code === 11000) {
-      subscription = await save();
-    } else {
-      throw error;
+      return {
+        success: false,
+        status: 409,
+        message: "A subscription already exists for this business.",
+      };
     }
+
+    throw error;
   }
 
   if (!subscription) {
-    throw new Error("Could not save the subscription");
+    throw new Error("Could not start the free trial.");
   }
 
-  // Progress only goes up
   await UserModel.updateOne({ _id: user._id }, { $max: { onboardingStep: 4 } });
 
   return {
     success: true,
-    message: existing ? "Plan updated" : "Free trial started",
+    type: "trial",
+    message: "Your 7-day free trial has started.",
     subscription: toSubscriptionDto(subscription),
     onboardingStep: 4,
   };

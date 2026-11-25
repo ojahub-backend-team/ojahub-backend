@@ -77,7 +77,9 @@ export const skipProductStep3Controller = tryCatchFn(async (req, res) => {
   return sendSuccessResponse(res, 200, {
     success: true,
     message: result.message,
-    body: { onboardingStep: result.onboardingStep },
+    body: {
+      onboardingStep: result.onboardingStep,
+    },
   });
 });
 
@@ -88,11 +90,24 @@ export const savePlanStep4Controller = tryCatchFn(async (req, res) => {
     return sendErrorResponse(res, result.status, result.message);
   }
 
+  if (result.type === "trial") {
+    return sendSuccessResponse(res, 200, {
+      success: true,
+      message: result.message,
+      body: {
+        type: "trial",
+        subscription: result.subscription,
+        onboardingStep: result.onboardingStep,
+      },
+    });
+  }
+
   return sendSuccessResponse(res, 200, {
     success: true,
     message: result.message,
     body: {
-      subscription: result.subscription,
+      type: "payment",
+      payment: result.payment,
       onboardingStep: result.onboardingStep,
     },
   });

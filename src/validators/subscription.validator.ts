@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { PLAN_IDS } from "../config/plans.js";
+import { SUBSCRIPTION_PLAN_IDS } from "../config/plans.js";
 
 export const planStep4Schema = z.object({
-  plan: z.enum(PLAN_IDS),
+  plan: z.enum(SUBSCRIPTION_PLAN_IDS),
 });

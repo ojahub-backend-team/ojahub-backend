@@ -1,13 +1,16 @@
 import mongoose, { Document, Schema } from "mongoose";
-import { PLAN_IDS, type PlanId } from "../config/plans.js";
+import {
+  SUBSCRIPTION_PLAN_IDS,
+  type SubscriptionPlanId,
+} from "../config/plans.js";
 
 export interface ISubscription extends Document {
   _id: mongoose.Types.ObjectId;
   businessId: mongoose.Types.ObjectId;
-  plan: PlanId;
-  priceKobo: number; // price when the plan was chosen
-  trialStartedAt: Date;
-  trialEndsAt: Date;
+  plan: SubscriptionPlanId;
+  priceKobo: number;
+  trialStartedAt?: Date;
+  trialEndsAt?: Date;
   currentPeriodEnd?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -19,11 +22,11 @@ const SubscriptionSchema: Schema<ISubscription> = new Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Business",
       required: true,
-      unique: true, // one subscription per business
+      unique: true,
     },
     plan: {
       type: String,
-      enum: PLAN_IDS,
+      enum: SUBSCRIPTION_PLAN_IDS,
       required: true,
     },
     priceKobo: {
@@ -33,11 +36,9 @@ const SubscriptionSchema: Schema<ISubscription> = new Schema(
     },
     trialStartedAt: {
       type: Date,
-      required: true,
     },
     trialEndsAt: {
       type: Date,
-      required: true,
     },
     currentPeriodEnd: {
       type: Date,

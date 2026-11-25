@@ -39,9 +39,6 @@ const addMonths = (date: Date, months: number): Date => {
   return result;
 };
 
-/**
- * Sends a payment failure email without interrupting payment processing.
- */
 const notifyPaymentFailure = async (payment: {
   userId: unknown;
   plan: PlanId;
@@ -66,9 +63,6 @@ const notifyPaymentFailure = async (payment: {
   }
 };
 
-/**
- * Sends a payment success email without interrupting payment processing.
- */
 const notifyPaymentSuccess = async (
   payment: {
     userId: unknown;
@@ -100,7 +94,7 @@ const notifyPaymentSuccess = async (
 };
 
 /**
- * Initializes a subscription payment through Paystack.
+ * Initializes a paid subscription payment through Paystack.
  */
 export const initializeSubscriptionPaymentService = async (
   userId: string,
@@ -119,34 +113,44 @@ export const initializeSubscriptionPaymentService = async (
     );
   }
 
-  const subscription = await SubscriptionModel.findOne({
-    businessId: user.businessId,
-  });
-
-  if (!subscription) {
-    throw new PaymentServiceError(
-      "No subscription found. Please select a subscription plan first.",
-      404,
-    );
-  }
-
-  const now = new Date();
-
-  if (subscription.currentPeriodEnd && now < subscription.currentPeriodEnd) {
-    throw new PaymentServiceError("Your subscription is already active.", 409);
-  }
-
-  if (now < subscription.trialEndsAt) {
-    throw new PaymentServiceError(
-      "Your free trial is still active. Payment is not required yet.",
-      409,
-    );
-  }
-
   const selectedPlan = PLANS[plan];
 
   if (!selectedPlan) {
     throw new PaymentServiceError("Invalid subscription plan.");
+  }
+
+  const subscription = await SubscriptionModel.findOne({
+    businessId: user.businessId,
+  });
+
+  const now = new Date();
+  
+
+  if (subscription?.currentPeriodEnd && now < subscription.currentPeriodEnd) {
+    throw new PaymentServiceError("Your subscription is already active.", 409);
+  }
+
+  if (
+    subscription?.plan === "free_trial" &&
+    subscription.trialEndsAt &&
+    now < subscription.trialEndsAt
+  ) {
+    throw new PaymentServiceError(
+      "Your free trial is still active. You can pay after it expires.",
+      409,
+    );
+  }
+
+  const pendingPayment = await PaymentModel.findOne({
+    businessId: user.businessId,
+    status: "pending",
+  });
+
+  if (pendingPayment) {
+    throw new PaymentServiceError(
+      "You already have a pending payment. Complete or resolve it before starting another payment.",
+      409,
+    );
   }
 
   const date = new Intl.DateTimeFormat("en-CA", {
@@ -155,7 +159,7 @@ export const initializeSubscriptionPaymentService = async (
     month: "2-digit",
     day: "2-digit",
   })
-    .format(new Date())
+    .format(now)
     .replaceAll("-", "");
 
   const uniqueCode = randomBytes(4).toString("hex").slice(0, 6).toUpperCase();
@@ -203,8 +207,8 @@ export const initializeSubscriptionPaymentService = async (
 };
 
 /**
- * Verifies a Paystack transaction and activates the subscription
- * only after successful verification.
+ * Verifies a Paystack transaction and creates or activates
+ * the subscription only after successful verification.
  */
 export const verifySubscriptionPaymentService = async (
   userId: string,
@@ -219,17 +223,10 @@ export const verifySubscriptionPaymentService = async (
     throw new PaymentServiceError("Payment record not found.", 404);
   }
 
-  // Prevent repeated verification from sending duplicate emails.
   if (payment.status === "success") {
-    const existingSubscription = await SubscriptionModel.findOne({
-      businessId: payment.businessId,
-    });
-
+    const paidAt = payment.paidAt ?? payment.createdAt;
     const paidPlan = PLANS[payment.plan as PlanId];
-
-    const currentPeriodEnd =
-      existingSubscription?.currentPeriodEnd ??
-      addMonths(payment.paidAt ?? payment.createdAt, paidPlan.months);
+    const currentPeriodEnd = addMonths(paidAt, paidPlan.months);
 
     return {
       alreadyProcessed: true,
@@ -287,34 +284,41 @@ export const verifySubscriptionPaymentService = async (
     );
   }
 
-  const subscription = await SubscriptionModel.findOne({
-    businessId: payment.businessId,
-  });
-
-  if (!subscription) {
-    throw new PaymentServiceError("Subscription record not found.", 404);
-  }
-
   const paidAt = transaction.paid_at
     ? new Date(transaction.paid_at)
     : new Date();
 
   const paidPlan = PLANS[payment.plan as PlanId];
-
   const currentPeriodEnd = addMonths(paidAt, paidPlan.months);
 
-  subscription.plan = payment.plan;
-  subscription.priceKobo = payment.amountKobo;
-  subscription.currentPeriodEnd = currentPeriodEnd;
+  const subscription = await SubscriptionModel.findOneAndUpdate(
+    { businessId: payment.businessId },
+    
+    {
+      $set: {
+        plan: payment.plan,
+        priceKobo: payment.amountKobo,
+        currentPeriodEnd,
+      },
+    },
+    {
+      upsert: true,
+      new: true,
+      runValidators: true,
+      setDefaultsOnInsert: true,
+    },
+  );
 
-  await subscription.save();
+  if (!subscription) {
+    throw new PaymentServiceError("Could not activate the subscription.", 500);
+  }
 
   payment.status = "success";
   payment.paidAt = paidAt;
-
   await payment.save();
 
-  // Send the receipt only after successful verification and activation.
+  await UserModel.updateOne({ _id: userId }, { $max: { onboardingStep: 4 } });
+
   await notifyPaymentSuccess(payment, paidAt, currentPeriodEnd);
 
   return {

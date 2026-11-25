@@ -1,6 +1,12 @@
 import SubscriptionModel from "../models/subscription.model.js";
 import UserModel from "../models/user.model.js";
-import { PLANS, PLAN_IDS, TRIAL_DAYS } from "../config/plans.js";
+import {
+  PLANS,
+  SUBSCRIPTION_PLAN_IDS,
+  FREE_TRIAL_PLAN_ID,
+  TRIAL_DAYS,
+  type PlanId,
+} from "../config/plans.js";
 import {
   toSubscriptionDto,
   type SubscriptionDto,
@@ -8,21 +14,22 @@ import {
 import type { SubscriptionStatus } from "../utils/subscriptionStatus.js";
 
 export type SubscriptionState = {
-  // "none" means the trader has not chosen a plan yet (step 4)
   status: SubscriptionStatus | "none";
   canWrite: boolean;
   subscription: SubscriptionDto | null;
 };
 
-// One place decides whether a business may write.
-// The expiry gate will use this same function.
 export const getSubscriptionStateForBusiness = async (
   businessId: string,
 ): Promise<SubscriptionState> => {
   const sub = await SubscriptionModel.findOne({ businessId });
 
   if (!sub) {
-    return { status: "none", canWrite: false, subscription: null };
+    return {
+      status: "none",
+      canWrite: false,
+      subscription: null,
+    };
   }
 
   const dto = toSubscriptionDto(sub);
@@ -41,11 +48,14 @@ type StateResult =
 export const getSubscriptionStateForUserService = async (
   userId: string,
 ): Promise<StateResult> => {
-  // The business ID always comes from the user record, never from the request
   const user = await UserModel.findById(userId).select("businessId");
 
   if (!user) {
-    return { success: false, status: 404, message: "User not found" };
+    return {
+      success: false,
+      status: 404,
+      message: "User not found",
+    };
   }
 
   if (!user.businessId) {
@@ -65,10 +75,23 @@ export const getSubscriptionStateForUserService = async (
 
 export const listPlans = () => ({
   trialDays: TRIAL_DAYS,
-  plans: PLAN_IDS.map((id) => ({
-    id,
-    label: PLANS[id].label,
-    priceKobo: PLANS[id].priceKobo,
-    months: PLANS[id].months,
-  })),
+  plans: SUBSCRIPTION_PLAN_IDS.map((id) => {
+    if (id === FREE_TRIAL_PLAN_ID) {
+      return {
+        id,
+        label: "Free Trial",
+        priceKobo: 0,
+        months: 0,
+      };
+    }
+
+    const paidPlan = PLANS[id as PlanId];
+
+    return {
+      id,
+      label: paidPlan.label,
+      priceKobo: paidPlan.priceKobo,
+      months: paidPlan.months,
+    };
+  }),
 });
