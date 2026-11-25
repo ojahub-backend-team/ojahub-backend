@@ -75,3 +75,61 @@ export const saveFirstLocationService = async (
     onboardingStep: Math.max(user.onboardingStep, 2),
   };
 };
+
+type CreateLocationResult =
+  | {
+      success: true;
+      message: string;
+      location: {
+        _id: string;
+        name: string;
+        type: LocationType;
+        address: string;
+        isDefault: boolean;
+      };
+    }
+  | {
+      success: false;
+      status: number;
+      message: string;
+    };
+
+export const createLocationService = async (
+  businessId: string,
+  data: Step2Data,
+): Promise<CreateLocationResult> => {
+  try {
+    // Create an additional location under the authenticated business
+    const location = await LocationModel.create({
+      businessId,
+      name: data.name,
+      type: data.type,
+      address: data.address,
+      isDefault: false,
+      isActive: true,
+    });
+
+    return {
+      success: true,
+      message: "Location created successfully",
+      location: {
+        _id: location._id.toString(),
+        name: location.name,
+        type: location.type,
+        address: location.address,
+        isDefault: location.isDefault,
+      },
+    };
+  } catch (error: any) {
+    // Handle duplicate location names
+    if (error.code === 11000) {
+      return {
+        success: false,
+        status: 409,
+        message: "A location with this name already exists",
+      };
+    }
+
+    throw error;
+  }
+};

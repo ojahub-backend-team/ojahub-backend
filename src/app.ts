@@ -16,6 +16,8 @@ import { compressionOptions, helmetOptions } from "./libs/option.js";
 import authRoutes from "./routes/auth.routes.js";
 import onboardingRoutes from "./routes/onboarding.routes.js";
 import subscriptionRoutes from "./routes/subscription.routes.js";
+import stockTransferRoutes from "./routes/stockTransfer.routes.js";
+import locationRoutes from "./routes/location.routes.js";
 
 declare global {
   namespace Express {
@@ -67,16 +69,6 @@ app.get("/health", (_req, res) => {
     .json({ status: dbUp ? "ok" : "database unavailable" });
 });
 
-//health check - no logs, session, or rate limiter required
-app.use("/health", (req: Request, res: Response) => {
-  res.status(200).json({
-    status: "success",
-    message: "Server is running",
-    environment: env.NODE_ENV,
-    timeStamp: req.requestTime,
-    uptime: process.uptime(),
-  });
-});
 
 app.use(createExpressLogger());
 app.use(cors(corsOptions));
@@ -91,9 +83,12 @@ app.disable("x-powered-by");
 app.use("/api/auth", authRoutes);
 app.use("/api/onboarding", onboardingRoutes);
 app.use("/api/subscription", subscriptionRoutes);
+app.use("/api/stock-transfers", stockTransferRoutes);
+app.use("/api/locations", locationRoutes);
 
 //handle 404 and global error
 app.use(notFoundRoutes);
 app.use(appErrorHandler);
+
 
 export default app;

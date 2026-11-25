@@ -36,8 +36,11 @@ const StockLevelSchema: Schema<IStockLevel> = new Schema(
   { timestamps: true },
 );
 
-StockLevelSchema.index({ productId: 1, locationId: 1 }, { unique: true });
-StockLevelSchema.index({ businessId: 1, locationId: 1 });
+// Each product can have only one stock-level record per business location
+StockLevelSchema.index(
+  { businessId: 1, productId: 1, locationId: 1 },
+  { unique: true },
+);
 
 const StockLevelModel =
   mongoose.models.StockLevel ||
