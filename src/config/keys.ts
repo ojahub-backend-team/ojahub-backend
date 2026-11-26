@@ -20,15 +20,31 @@ const ENV_VARS: EnvSpec[] = [
     required: true,
   },
   {
+    key: "GOOGLE_CLIENT_ID",
+    required: true,
+  },
+  {
     key: "DB_NAME",
     required: true,
   },
   {
-    key: "SESSION_MAX_AGE,",
+    key: "SESSION_MAX_AGE",
     required: false,
   },
   {
     key: "SESSION_SECRET",
+    required: true,
+  },
+  {
+    key: "BREVO_API_KEY",
+    required: true,
+  },
+  {
+    key: "BREVO_SENDER_EMAIL",
+    required: true,
+  },
+  {
+    key: "PAYSTACK_SECRET_KEY",
     required: true,
   },
 ];

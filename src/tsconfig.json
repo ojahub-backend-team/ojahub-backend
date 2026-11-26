@@ -9,13 +9,13 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
+    "outDir": "../dist",
+    "rootDir": ".",
     "noEmit": false,
     "types": ["node", "bcrypt"],
     "lib": ["ES2022"]
   },
-  "include": ["src/**/*.ts", "src/**/*.json"],
+  "include": ["**/*.ts", "**/*.json"],
   "exclude": [
     "node_modules",
     "dist",
