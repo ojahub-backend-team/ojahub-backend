@@ -9,6 +9,7 @@ import {
   verifyPaymentController,
 } from "../controllers/payment.controller.js";
 import { initializePaymentSchema } from "../validators/payment.validators.js";
+import { initializePaymentRateLimiter } from "../middlewares/rateLimiter.js";
 
 const router = Router();
 
@@ -16,10 +17,11 @@ router.use(verifySession, requireBusiness);
 
 router.post(
   "/initialize",
+  initializePaymentRateLimiter,
   validate(initializePaymentSchema),
   initializePaymentController,
 );
 
-router.get("/verify/:reference", verifyPaymentController);
+router.post("/verify/:reference", verifyPaymentController);
 
 export default router;

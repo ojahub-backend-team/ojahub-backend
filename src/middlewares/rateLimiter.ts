@@ -1,6 +1,6 @@
 import rateLimit from "express-rate-limit";
 
-const FIFTEEN_MINUTES = 15 * 6 * 1000;
+const FIFTEEN_MINUTES = 15 * 60 * 1000;
 
 const tooMany = (message: string) => ({ success: false, message });
 
@@ -72,4 +72,15 @@ export const resetPasswordRateLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: tooMany("Too many password reset attempts. Please try again later."),
+});
+
+// Every initialization request counts because it can create a pending payment.
+export const initializePaymentRateLimiter = rateLimit({
+  windowMs: FIFTEEN_MINUTES,
+  limit: 10,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: tooMany(
+    "Too many payment attempts. Please wait before trying again.",
+  ),
 });

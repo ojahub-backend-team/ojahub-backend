@@ -1,7 +1,41 @@
+import { createHmac, timingSafeEqual } from "crypto";
 import { env } from "../config/keys.js";
 
 const PAYSTACK_BASE_URL = "https://api.paystack.co";
 const REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * Verifies the authenticity of a Paystack webhook request.
+ *
+ * Paystack signs webhook requests using HMAC SHA-512.
+ * The signature must be calculated from the original raw request body.
+ */
+
+export const verifyPaystackWebhookSignature = (
+  rawBody: Buffer,
+  signature: string | undefined,
+): boolean => {
+  if (
+    !signature ||
+    !Buffer.isBuffer(rawBody) ||
+    !/^[a-f0-9]{128}$/i.test(signature)
+  ) {
+    return false;
+  }
+
+  const expectedSignature = createHmac("sha512", env.PAYSTACK_SECRET_KEY)
+    .update(rawBody)
+    .digest("hex");
+
+  const receivedBuffer = Buffer.from(signature, "hex");
+  const expectedBuffer = Buffer.from(expectedSignature, "hex");
+
+  if (receivedBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(receivedBuffer, expectedBuffer);
+};
 
 /**
  * Standard structure returned by Paystack's API.
@@ -124,6 +158,7 @@ export const initializePaystackTransaction = async (
         amount: amountKobo,
         reference,
         currency: "NGN",
+
       }),
     },
   );

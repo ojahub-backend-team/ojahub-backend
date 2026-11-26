@@ -17,6 +17,7 @@ import authRoutes from "./routes/auth.routes.js";
 import onboardingRoutes from "./routes/onboarding.routes.js";
 import subscriptionRoutes from "./routes/subscription.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
+import paystackWebhookRoutes from "./routes/paystack-webhook.routes.js";
 
 declare global {
   namespace Express {
@@ -83,6 +84,14 @@ app.use(createExpressLogger());
 app.use(cors(corsOptions));
 app.use(helmet(helmetOptions));
 app.use(createSessionMiddleware());
+
+// Paystack webhook must receive the original raw request body.
+app.use(
+  "/api/payment/webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+  paystackWebhookRoutes,
+);
+
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(compression(compressionOptions));
