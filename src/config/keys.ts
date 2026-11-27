@@ -47,6 +47,10 @@ const ENV_VARS: EnvSpec[] = [
     key: "PAYSTACK_SECRET_KEY",
     required: true,
   },
+  {
+    key: "CLIENT_URL",
+    required: true,
+  },
 ];
 
 interface Env {

@@ -112,26 +112,13 @@ export const choosePlanService = async (
 
   const businessId = user.businessId;
 
-  const pendingPayment = await PaymentModel.findOne({
-    businessId,
-    status: "pending",
-  });
-
-  if (pendingPayment) {
-    return {
-      success: false,
-      status: 409,
-      message:
-        "You already have a pending payment. Complete or resolve it before selecting another plan.",
-    };
-  }
-
   const existing = await SubscriptionModel.findOne({ businessId });
   const now = new Date();
 
   if (existing) {
     const status = getSubscriptionStatus(existing, now);
 
+    // An active paid subscription cannot be changed.
     if (status === "active") {
       return {
         success: false,
@@ -140,6 +127,7 @@ export const choosePlanService = async (
       };
     }
 
+    // An active free trial cannot be changed to a paid plan yet.
     if (status === "trialing") {
       return {
         success: false,
@@ -149,7 +137,7 @@ export const choosePlanService = async (
       };
     }
 
-    // An existing expired subscription means the user has already
+    // An expired subscription means the user has already
     // used their trial or previously had a paid subscription.
     if (planId === FREE_TRIAL_PLAN_ID) {
       return {
@@ -161,6 +149,10 @@ export const choosePlanService = async (
     }
   }
 
+  // PAID PLAN SELECTION
+  // Let payment.service.ts handle existing pending payments.
+  // It checks their actual status with Paystack before allowing
+  // a new payment or returning an existing checkout URL.
   if (planId !== FREE_TRIAL_PLAN_ID) {
     try {
       const payment = await initializeSubscriptionPaymentService(
@@ -171,7 +163,9 @@ export const choosePlanService = async (
       return {
         success: true,
         type: "payment",
-        message: "Continue to Paystack to complete your payment.",
+        message: payment.alreadyPending
+          ? "Continue your existing Paystack payment."
+          : "Continue to Paystack to complete your payment.",
         payment,
         onboardingStep: user.onboardingStep,
       };
@@ -186,6 +180,23 @@ export const choosePlanService = async (
 
       throw error;
     }
+  }
+
+  // FREE TRIAL SELECTION
+  // A user must not start a free trial while an unresolved
+  // paid transaction exists for the same business.
+  const pendingPayment = await PaymentModel.findOne({
+    businessId,
+    status: "pending",
+  });
+
+  if (pendingPayment) {
+    return {
+      success: false,
+      status: 409,
+      message:
+        "You already have a pending payment. Please resolve it before starting a free trial.",
+    };
   }
 
   const trialStartedAt = now;

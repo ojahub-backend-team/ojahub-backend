@@ -1,15 +1,18 @@
 import mongoose from "mongoose";
 import { randomBytes } from "crypto";
+
 import PaymentModel from "../models/payment.model.js";
 import SubscriptionModel from "../models/subscription.model.js";
 import UserModel from "../models/user.model.js";
 import { PLANS, type PlanId } from "../config/plans.js";
 import logger from "../config/logger.js";
+
 import {
   initializePaystackTransaction,
   verifyPaystackTransaction,
   PaystackServiceError,
 } from "./paystack.service.js";
+
 import {
   sendPaymentSuccessEmail,
   sendPaymentFailedEmail,
@@ -24,6 +27,18 @@ export class PaymentServiceError extends Error {
     this.name = "PaymentServiceError";
   }
 }
+
+const isPlanId = (value: unknown): value is PlanId =>
+  typeof value === "string" &&
+  Object.prototype.hasOwnProperty.call(PLANS, value);
+
+const getPlanDetails = (value: unknown) => {
+  if (!isPlanId(value)) {
+    throw new PaymentServiceError("Invalid subscription plan.", 400);
+  }
+
+  return PLANS[value];
+};
 
 const addMonths = (date: Date, months: number): Date => {
   const result = new Date(date);
@@ -41,9 +56,6 @@ const addMonths = (date: Date, months: number): Date => {
   return result;
 };
 
-/**
- * Sends a payment failure email without blocking the payment response.
- */
 const notifyPaymentFailure = async (payment: {
   userId: unknown;
   plan: PlanId;
@@ -58,15 +70,12 @@ const notifyPaymentFailure = async (payment: {
 
   await sendPaymentFailedEmail(user.email, {
     name: user.name,
-    planLabel: PLANS[payment.plan].label,
+    planLabel: getPlanDetails(payment.plan).label,
     amountKobo: payment.amountKobo,
     reference: payment.reference,
   });
 };
 
-/**
- * Sends a payment success email without blocking the payment response.
- */
 const notifyPaymentSuccess = async (
   payment: {
     userId: unknown;
@@ -85,7 +94,7 @@ const notifyPaymentSuccess = async (
 
   await sendPaymentSuccessEmail(user.email, {
     name: user.name,
-    planLabel: PLANS[payment.plan].label,
+    planLabel: getPlanDetails(payment.plan).label,
     amountKobo: payment.amountKobo,
     reference: payment.reference,
     paidAt,
@@ -93,13 +102,41 @@ const notifyPaymentSuccess = async (
   });
 };
 
+const sendFailureNotification = (payment: {
+  userId: unknown;
+  plan: PlanId;
+  amountKobo: number;
+  reference: string;
+}): void => {
+  void notifyPaymentFailure(payment).catch((error: unknown) => {
+    logger.error(
+      { err: error, reference: payment.reference },
+      "Failed to send payment failure email.",
+    );
+  });
+};
+
 /**
- * Initializes a paid subscription payment through Paystack.
+ * Initialize a paid subscription payment.
+ *
+ * Same plan:
+ * Reuse the existing checkout where possible.
+ *
+ * Different plan:
+ * Verify the previous checkout before releasing it.
+ * A successful old payment is processed, not replaced.
+ * An unverified checkout is never released.
  */
 export const initializeSubscriptionPaymentService = async (
   userId: string,
   plan: PlanId,
 ) => {
+  if (!isPlanId(plan)) {
+    throw new PaymentServiceError("Invalid subscription plan.", 400);
+  }
+
+  const selectedPlan = getPlanDetails(plan);
+
   const user = await UserModel.findById(userId).select("email businessId");
 
   if (!user) {
@@ -113,17 +150,11 @@ export const initializeSubscriptionPaymentService = async (
     );
   }
 
-  const selectedPlan = PLANS[plan];
-
-  if (!selectedPlan) {
-    throw new PaymentServiceError("Invalid subscription plan.");
-  }
+  const now = new Date();
 
   const subscription = await SubscriptionModel.findOne({
     businessId: user.businessId,
   });
-
-  const now = new Date();
 
   if (subscription?.currentPeriodEnd && now < subscription.currentPeriodEnd) {
     throw new PaymentServiceError("Your subscription is already active.", 409);
@@ -146,12 +177,117 @@ export const initializeSubscriptionPaymentService = async (
   });
 
   if (pendingPayment) {
-    throw new PaymentServiceError(
-      "You already have a pending payment. Complete or resolve it before starting another payment.",
-      409,
+    let oldTransaction;
+
+    try {
+      oldTransaction = await verifyPaystackTransaction(
+        pendingPayment.reference,
+      );
+    } catch (error) {
+      logger.error(
+        { err: error, reference: pendingPayment.reference },
+        "Could not verify existing Paystack transaction.",
+      );
+
+      if (error instanceof PaystackServiceError) {
+        throw new PaymentServiceError(
+          "We could not verify your previous payment. Please try again shortly.",
+          502,
+        );
+      }
+
+      throw error;
+    }
+
+    if (
+      oldTransaction.reference !== pendingPayment.reference ||
+      oldTransaction.amount !== pendingPayment.amountKobo ||
+      oldTransaction.currency !== "NGN"
+    ) {
+      throw new PaymentServiceError(
+        "The previous transaction details could not be verified.",
+        400,
+      );
+    }
+
+    const oldStatus = String(oldTransaction.status).toLowerCase();
+
+    // Never create a new checkout when the previous payment succeeded.
+    if (oldStatus === "success") {
+      await processPaymentByReference(pendingPayment.reference);
+
+      throw new PaymentServiceError(
+        "Your previous payment was successful. Your subscription has been processed.",
+        409,
+      );
+    }
+
+    // Reuse the existing checkout for the same plan.
+    if (pendingPayment.plan === plan) {
+      if (
+        oldStatus !== "failed" &&
+        oldStatus !== "abandoned" &&
+        pendingPayment.authorizationUrl
+      ) {
+        return {
+          reference: pendingPayment.reference,
+          authorizationUrl: pendingPayment.authorizationUrl,
+          accessCode: pendingPayment.accessCode,
+          amountKobo: pendingPayment.amountKobo,
+          plan: pendingPayment.plan,
+          alreadyPending: true,
+        };
+      }
+
+      if (oldStatus !== "failed" && oldStatus !== "abandoned") {
+        throw new PaymentServiceError(
+          "Your previous checkout is still being resolved. Please try again shortly.",
+          409,
+        );
+      }
+    }
+
+    // Only release the previous checkout after Paystack verification.
+    const nextStatus =
+      oldStatus === "failed" || oldStatus === "abandoned"
+        ? "failed"
+        : "superseded";
+
+    const releasedPayment = await PaymentModel.findOneAndUpdate(
+      {
+        _id: pendingPayment._id,
+        status: "pending",
+      },
+      {
+        $set: { status: nextStatus },
+      },
+      { new: true },
+    );
+
+    if (!releasedPayment) {
+      throw new PaymentServiceError(
+        "Your previous checkout changed while we were processing your request. Please try again.",
+        409,
+      );
+    }
+
+    if (nextStatus === "failed" && oldStatus === "failed") {
+      sendFailureNotification(releasedPayment);
+    }
+
+    logger.info(
+      {
+        oldReference: releasedPayment.reference,
+        oldPlan: releasedPayment.plan,
+        newPlan: plan,
+        businessId: user.businessId,
+        oldStatus: nextStatus,
+      },
+      "Previous checkout released for a new plan.",
     );
   }
 
+  // Generate a unique payment reference.
   const date = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Africa/Lagos",
     year: "numeric",
@@ -164,14 +300,53 @@ export const initializeSubscriptionPaymentService = async (
   const uniqueCode = randomBytes(4).toString("hex").toUpperCase();
   const reference = `OJA-${date}-${uniqueCode}`;
 
-  const payment = await PaymentModel.create({
-    userId: user._id,
-    businessId: user.businessId,
-    plan,
-    amountKobo: selectedPlan.priceKobo,
-    reference,
-    status: "pending",
-  });
+  let payment;
+
+  try {
+    payment = await PaymentModel.create({
+      userId: user._id,
+      businessId: user.businessId,
+      plan,
+      amountKobo: selectedPlan.priceKobo,
+      reference,
+      status: "pending",
+      activationStatus: "not_activated",
+    });
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === 11000
+    ) {
+      const existingPending = await PaymentModel.findOne({
+        businessId: user.businessId,
+        status: "pending",
+      });
+
+      if (
+        existingPending &&
+        existingPending.plan === plan &&
+        existingPending.authorizationUrl
+      ) {
+        return {
+          reference: existingPending.reference,
+          authorizationUrl: existingPending.authorizationUrl,
+          accessCode: existingPending.accessCode,
+          amountKobo: existingPending.amountKobo,
+          plan: existingPending.plan,
+          alreadyPending: true,
+        };
+      }
+
+      throw new PaymentServiceError(
+        "Another checkout is already being created. Please try again shortly.",
+        409,
+      );
+    }
+
+    throw error;
+  }
 
   try {
     const transaction = await initializePaystackTransaction(
@@ -185,19 +360,32 @@ export const initializeSubscriptionPaymentService = async (
 
     await payment.save();
 
+    logger.info(
+      { reference, userId, plan },
+      "Paystack transaction initialized.",
+    );
+
     return {
       reference,
       authorizationUrl: transaction.authorization_url,
       accessCode: transaction.access_code,
       amountKobo: selectedPlan.priceKobo,
       plan,
+      alreadyPending: false,
     };
   } catch (error) {
-    payment.status = "failed";
-    await payment.save();
+    // A timeout does not prove Paystack failed to create the transaction.
+    // Keep the payment pending until its status can be verified.
+    logger.error(
+      { err: error, reference },
+      "Paystack initialization could not be confirmed.",
+    );
 
     if (error instanceof PaystackServiceError) {
-      throw new PaymentServiceError(error.message, 502);
+      throw new PaymentServiceError(
+        "We could not confirm whether your checkout was created. Please try again shortly.",
+        502,
+      );
     }
 
     throw error;
@@ -205,12 +393,8 @@ export const initializeSubscriptionPaymentService = async (
 };
 
 /**
- * Shared payment-processing function.
- *
- * Both the authenticated verification endpoint and the Paystack webhook
- * will use this function. It verifies the transaction with Paystack,
- * validates the amount and currency, and activates the subscription
- * inside a MongoDB transaction.
+ * Shared payment processing.
+ * Used by the callback verification endpoint and Paystack webhook.
  */
 export const processPaymentByReference = async (reference: string) => {
   const payment = await PaymentModel.findOne({ reference });
@@ -219,25 +403,22 @@ export const processPaymentByReference = async (reference: string) => {
     throw new PaymentServiceError("Payment record not found.", 404);
   }
 
+  const paidPlan = getPlanDetails(payment.plan);
+
   if (payment.status === "success") {
     const paidAt = payment.paidAt ?? payment.createdAt;
-   const paidPlan = PLANS[payment.plan as PlanId];
-    const currentPeriodEnd = addMonths(paidAt, paidPlan.months);
 
     return {
       alreadyProcessed: true,
-      message: "Payment has already been verified.",
+      activationStatus: payment.activationStatus,
+      message:
+        payment.activationStatus === "needs_review"
+          ? "Payment was successful but requires subscription reconciliation."
+          : "Payment has already been verified.",
       reference: payment.reference,
       plan: payment.plan,
-      currentPeriodEnd,
+      currentPeriodEnd: addMonths(paidAt, paidPlan.months),
     };
-  }
-
-  if (payment.status === "failed") {
-    throw new PaymentServiceError(
-      "This payment has already been marked as failed.",
-      400,
-    );
   }
 
   let transaction;
@@ -245,6 +426,11 @@ export const processPaymentByReference = async (reference: string) => {
   try {
     transaction = await verifyPaystackTransaction(reference);
   } catch (error) {
+    logger.error(
+      { err: error, reference },
+      "Paystack transaction verification failed.",
+    );
+
     if (error instanceof PaystackServiceError) {
       throw new PaymentServiceError(error.message, 502);
     }
@@ -266,12 +452,14 @@ export const processPaymentByReference = async (reference: string) => {
     );
   }
 
-  if (transaction.status !== "success") {
-    if (transaction.status === "failed") {
+  const transactionStatus = String(transaction.status).toLowerCase();
+
+  if (transactionStatus !== "success") {
+    if (transactionStatus === "failed" || transactionStatus === "abandoned") {
       const failedPayment = await PaymentModel.findOneAndUpdate(
         {
           _id: payment._id,
-          status: "pending",
+          status: { $in: ["pending", "superseded"] },
         },
         {
           $set: { status: "failed" },
@@ -279,19 +467,19 @@ export const processPaymentByReference = async (reference: string) => {
         { new: true },
       );
 
-      if (failedPayment) {
-        void notifyPaymentFailure(failedPayment).catch((error: unknown) => {
-          logger.error(
-            { err: error, reference: failedPayment.reference },
-            "Failed to send payment failure email.",
-          );
-        });
+      if (failedPayment && transactionStatus === "failed") {
+        sendFailureNotification(failedPayment);
       }
+
+      throw new PaymentServiceError(
+        "Paystack confirmed that this payment was not successful. You can select a plan and try again.",
+        400,
+      );
     }
 
     throw new PaymentServiceError(
-      "Payment has not been completed successfully.",
-      400,
+      "Your payment is still being processed. Please check again shortly.",
+      409,
     );
   }
 
@@ -306,34 +494,52 @@ export const processPaymentByReference = async (reference: string) => {
     );
   }
 
-  const paidPlan = PLANS[payment.plan as PlanId];
-
-  if (!paidPlan) {
-    throw new PaymentServiceError(
-      "Invalid subscription plan on payment record.",
-      400,
-    );
-  }
-
   const currentPeriodEnd = addMonths(paidAt, paidPlan.months);
-
   const session = await mongoose.startSession();
 
   let paymentProcessed = false;
   let alreadyProcessed = false;
+  let needsReview = false;
 
   try {
     await session.withTransaction(async () => {
-      // Reset these values because MongoDB may retry a transaction.
       paymentProcessed = false;
       alreadyProcessed = false;
+      needsReview = false;
 
-      // Atomically claim this payment. Only one request can change
-      // its status from pending to success.
+      const currentPayment = await PaymentModel.findById(payment._id).session(
+        session,
+      );
+
+      if (!currentPayment) {
+        throw new PaymentServiceError("Payment record not found.", 404);
+      }
+
+      if (currentPayment.status === "success") {
+        alreadyProcessed = true;
+        return;
+      }
+
+      const wasSuperseded =
+        currentPayment.status === "superseded" ||
+        currentPayment.status === "failed";
+
+      if (
+        !["pending", "superseded", "failed"].includes(
+          String(currentPayment.status),
+        )
+      ) {
+        throw new PaymentServiceError(
+          "Payment cannot be processed in its current state.",
+          409,
+        );
+      }
+
+      // Record Paystack's actual success.
       const claimedPayment = await PaymentModel.findOneAndUpdate(
         {
           _id: payment._id,
-          status: "pending",
+          status: { $in: ["pending", "superseded", "failed"] },
         },
         {
           $set: {
@@ -348,19 +554,76 @@ export const processPaymentByReference = async (reference: string) => {
       );
 
       if (!claimedPayment) {
-        const existingPayment = await PaymentModel.findById(
-          payment._id,
-        ).session(session);
+        const latestPayment = await PaymentModel.findById(payment._id).session(
+          session,
+        );
 
-        if (existingPayment?.status === "success") {
+        if (latestPayment?.status === "success") {
           alreadyProcessed = true;
           return;
         }
 
         throw new PaymentServiceError(
-          "Payment could not be processed because its status has changed.",
+          "Payment status changed while processing. Please verify again.",
           409,
         );
+      }
+
+      // A superseded or previously failed checkout must not
+      // automatically activate its old plan.
+      if (wasSuperseded) {
+        await PaymentModel.updateOne(
+          { _id: payment._id },
+          {
+            $set: { activationStatus: "needs_review" },
+          },
+          { session },
+        );
+
+        needsReview = true;
+
+        logger.error(
+          {
+            reference: payment.reference,
+            businessId: payment.businessId,
+            plan: payment.plan,
+          },
+          "A superseded or failed Paystack payment succeeded. Reconciliation is required.",
+        );
+
+        return;
+      }
+
+      const existingSubscription = await SubscriptionModel.findOne({
+        businessId: payment.businessId,
+      }).session(session);
+
+      const activeSubscription =
+        existingSubscription?.currentPeriodEnd &&
+        existingSubscription.currentPeriodEnd > new Date();
+
+      // Never overwrite an active paid subscription.
+      if (activeSubscription) {
+        await PaymentModel.updateOne(
+          { _id: payment._id },
+          {
+            $set: { activationStatus: "needs_review" },
+          },
+          { session },
+        );
+
+        needsReview = true;
+
+        logger.error(
+          {
+            reference: payment.reference,
+            businessId: payment.businessId,
+            plan: payment.plan,
+          },
+          "Payment succeeded while another subscription was active. Reconciliation is required.",
+        );
+
+        return;
       }
 
       const subscription = await SubscriptionModel.findOneAndUpdate(
@@ -401,14 +664,20 @@ export const processPaymentByReference = async (reference: string) => {
         );
       }
 
+      await PaymentModel.updateOne(
+        { _id: payment._id },
+        {
+          $set: { activationStatus: "activated" },
+        },
+        { session },
+      );
+
       paymentProcessed = true;
     });
   } finally {
     await session.endSession();
   }
 
-  // Send the receipt only when this request actually changed the
-  // payment from pending to success.
   if (paymentProcessed) {
     void notifyPaymentSuccess(payment, paidAt, currentPeriodEnd).catch(
       (error: unknown) => {
@@ -422,9 +691,16 @@ export const processPaymentByReference = async (reference: string) => {
 
   return {
     alreadyProcessed,
-    message: alreadyProcessed
-      ? "Payment has already been verified."
-      : "Payment verified and subscription activated successfully.",
+    activationStatus: needsReview
+      ? "needs_review"
+      : alreadyProcessed
+        ? payment.activationStatus
+        : "activated",
+    message: needsReview
+      ? "Payment succeeded, but subscription reconciliation is required."
+      : alreadyProcessed
+        ? "Payment has already been verified."
+        : "Payment verified and subscription activated successfully.",
     reference: payment.reference,
     plan: payment.plan,
     currentPeriodEnd,
@@ -433,9 +709,6 @@ export const processPaymentByReference = async (reference: string) => {
 
 /**
  * Authenticated payment verification.
- *
- * Confirms that the payment belongs to the logged-in user before
- * passing it to the shared payment-processing function.
  */
 export const verifySubscriptionPaymentService = async (
   userId: string,

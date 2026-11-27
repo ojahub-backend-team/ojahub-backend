@@ -158,7 +158,7 @@ export const initializePaystackTransaction = async (
         amount: amountKobo,
         reference,
         currency: "NGN",
-
+        callback_url: `${env.CLIENT_URL.replace(/\/$/, "")}/payment/callback`,
       }),
     },
   );
