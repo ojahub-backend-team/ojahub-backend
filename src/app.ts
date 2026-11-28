@@ -18,6 +18,12 @@ import onboardingRoutes from "./routes/onboarding.routes.js";
 import subscriptionRoutes from "./routes/subscription.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
 import paystackWebhookRoutes from "./routes/paystack-webhook.routes.js";
+import priceProfileRoutes from "./routes/price-profile.routes.js";
+import storeRoutes from "./routes/store.routes.js";
+import productRoutes from "./routes/product.routes.js";
+import stockRoutes from "./routes/stock.routes.js";
+import stockTransferRoutes from "./routes/stock-transfer.routes.js";
+import stockMovementRoutes from "./routes/stock-movement.routes.js";
 
 declare global {
   namespace Express {
@@ -102,6 +108,12 @@ app.use("/api/auth", authRoutes);
 app.use("/api/onboarding", onboardingRoutes);
 app.use("/api/subscription", subscriptionRoutes);
 app.use("/api/payment", paymentRoutes);
+app.use("/api/price-profiles", priceProfileRoutes);
+app.use("/api/stores", storeRoutes);
+app.use("/api/products", productRoutes);
+app.use("/api/stocks", stockRoutes);
+app.use("/api/stock-transfers", stockTransferRoutes);
+app.use("/api/stock-movements", stockMovementRoutes);
 
 //handle 404 and global error
 app.use(notFoundRoutes);
